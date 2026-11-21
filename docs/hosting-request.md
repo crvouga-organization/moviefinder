@@ -20,8 +20,8 @@ Suggested issue title: `[hosting] moviefinder — approve isolated social discov
 
 | Field              | Value                                                                                                                                          |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Image source       | Shared reusable publish workflow → `ghcr.io/crvouga-organization/chrisvouga-moviefinder`                                                       |
-| Image reference    | `ghcr.io/crvouga-organization/chrisvouga-moviefinder:<approved-git-sha>` and `:latest`; not published yet                                      |
+| Image source       | Shared reusable publish workflow → `ghcr.io/crvouga/chrisvouga-moviefinder`                                                                    |
+| Image reference    | `ghcr.io/crvouga/chrisvouga-moviefinder:<approved-git-sha>` and `:latest`; not published yet                                                   |
 | Already published? | No. Local image build exists; publication must follow source integration and the shared workflow.                                              |
 | Dockerfile         | `Dockerfile`                                                                                                                                   |
 | Build context      | `.`                                                                                                                                            |
