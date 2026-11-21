@@ -1,6 +1,6 @@
 # Prepared shared-platform change request
 
-Status: implementation submitted as [MovieFinder PR #1](https://github.com/crvouga/moviefinder/pull/1), with the platform change in [workspace PR #84](https://github.com/crvouga/workspace/pull/84). Production is not deployed. Image publication and approved platform plan/application remain rollout prerequisites. The three legacy MovieFinder services are preserved.
+Status: implementation submitted as [MovieFinder PR #1](https://github.com/crvouga-organization/moviefinder/pull/1), with the platform change in [workspace PR #84](https://github.com/crvouga-organization/personal/pull/84). Production is not deployed. Image publication and approved platform plan/application remain rollout prerequisites. The three legacy MovieFinder services are preserved.
 
 Suggested issue title: `[hosting] moviefinder — approve isolated social discovery allocation and Bun service`
 
@@ -10,8 +10,8 @@ Suggested issue title: `[hosting] moviefinder — approve isolated social discov
 | ------------------ | ------------------------------------------------------------------------------------------------------------- |
 | Service id         | `moviefinder` — proposed; central inventory/ownership review required                                         |
 | Summary            | Authenticated movie/TV discovery with personal opinions, public profiles, and collaborative realtime lists.   |
-| Source repo        | `crvouga/moviefinder` (public), default branch `main`                                                         |
-| Source code URL    | https://github.com/crvouga/moviefinder                                                                        |
+| Source repo        | `crvouga-organization/moviefinder` (public), default branch `main`                                            |
+| Source code URL    | https://github.com/crvouga-organization/moviefinder                                                           |
 | Requested hostname | `moviefinder.chrisvouga.dev`, subject to approval against existing MovieFinder deployment roles               |
 | Kind               | HTTP server serving React, Hono APIs, Better Auth, and SSE                                                    |
 | Stack              | TypeScript 7.0.2, React 19.3.1, Vite+ 1.2.0, Hono 4.13.13, Better Auth 1.7.10, Bun 1.4.2; Bun package manager |
@@ -20,8 +20,8 @@ Suggested issue title: `[hosting] moviefinder — approve isolated social discov
 
 | Field              | Value                                                                                                                                          |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Image source       | Shared reusable publish workflow → `ghcr.io/crvouga/chrisvouga-moviefinder`                                                                    |
-| Image reference    | `ghcr.io/crvouga/chrisvouga-moviefinder:<approved-git-sha>` and `:latest`; not published yet                                                   |
+| Image source       | Shared reusable publish workflow → `ghcr.io/crvouga-organization/chrisvouga-moviefinder`                                                       |
+| Image reference    | `ghcr.io/crvouga-organization/chrisvouga-moviefinder:<approved-git-sha>` and `:latest`; not published yet                                      |
 | Already published? | No. Local image build exists; publication must follow source integration and the shared workflow.                                              |
 | Dockerfile         | `Dockerfile`                                                                                                                                   |
 | Build context      | `.`                                                                                                                                            |
@@ -96,7 +96,7 @@ The container smoke injects disposable process-only test values, uses an intenti
 | Title             | MovieFinder                                                                                                                                                                                                                 |
 | Setting           | side                                                                                                                                                                                                                        |
 | Deployment        | not-deployed-yet                                                                                                                                                                                                            |
-| Code              | public: https://github.com/crvouga/moviefinder                                                                                                                                                                              |
+| Code              | public: https://github.com/crvouga-organization/moviefinder                                                                                                                                                                 |
 | Description       | Find films and TV through a mobile poster feed, record your taste, and curate public lists with friends. A selective TMDB replica, normalized reactive state, and durable event replay keep collaborative edits consistent. |
 | Topics            | typescript, react, bun, postgres, react-query, mantine, zod, docker                                                                                                                                                         |
 | Screenshots       | Capture from the approved deployment after rollout; local verification screenshots contain test fixtures.                                                                                                                   |

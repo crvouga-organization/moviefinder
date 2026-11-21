@@ -31,9 +31,9 @@ Google sign-in uses the shared relay's application registration API/UI, separate
 ## Image and fleet contract
 
 - Service ID proposed for infrastructure review: `moviefinder`; do not silently repurpose a legacy service.
-- Source: https://github.com/crvouga/moviefinder, default branch main.
+- Source: https://github.com/crvouga-organization/moviefinder, default branch main.
 - Requested origin: `https://moviefinder.chrisvouga.dev`, subject to central allocation/ownership review.
-- Image contract: `ghcr.io/crvouga/chrisvouga-moviefinder:<git-sha>` and latest through the reusable shared workflow.
+- Image contract: `ghcr.io/crvouga-organization/chrisvouga-moviefinder:<git-sha>` and latest through the reusable shared workflow.
 - Dockerfile/context: `./Dockerfile`, `.`. Three build/runtime dependency stages plus pinned Bun image source; one final stateless Bun process, unprivileged user, port 8080.
 - Liveness: `GET /health` → 200, independent of database, Vault, TMDB, and user authentication.
 - Readiness: authenticated `GET /api/ready`; PostgreSQL unavailable → 503.
@@ -44,7 +44,7 @@ Google sign-in uses the shared relay's application registration API/UI, separate
 
 The `publish` job in `.github/workflows/check.yml` calls the platform's reusable GHCR publishing/deploy-dispatch workflow after all three validation jobs pass on a main push. This repository owns its workflows (`managed_publisher = false` in the platform inventory); it has no separate publisher workflow. Do not publish images manually, use Railway builds, run railway up, or change Railway/DNS outside inventory. Build without secrets. Runtime configuration is never copied into the image. The optional live smoke workflow uses GitHub OIDC with exportEnv:false and exposes only the requested key to its single command.
 
-The first main publish run [built and pushed the image but failed deployment notification](https://github.com/crvouga/moviefinder/actions/runs/38994345928) because this repository has no `DEPLOY_DISPATCH_TOKEN`. [Workspace PR #84](https://github.com/crvouga/workspace/pull/84) is merged, but its [foundation provisioning run failed](https://github.com/crvouga/workspace/actions/runs/38996724204) trying to import the nonexistent `moviefinder:production` GitHub environment. The platform must correct environment adoption in `packages/infra/tofu/foundation/repository.tf` and apply foundation provisioning to supply the managed dispatch credential before publishing can complete. Keep missing credentials fatal; do not disable deployment notification or inject control-plane credentials manually to make CI green. After provisioning, rerun the failed `Check` publish job (or the original `Publish image` run for its existing commit).
+The first main publish run [built and pushed the image but failed deployment notification](https://github.com/crvouga-organization/moviefinder/actions/runs/38994345928) because this repository has no `DEPLOY_DISPATCH_TOKEN`. [Workspace PR #84](https://github.com/crvouga-organization/personal/pull/84) is merged, but its [foundation provisioning run failed](https://github.com/crvouga-organization/personal/actions/runs/38996724204) trying to import the nonexistent `moviefinder:production` GitHub environment. The platform must correct environment adoption in `packages/infra/tofu/foundation/repository.tf` and apply foundation provisioning to supply the managed dispatch credential before publishing can complete. Keep missing credentials fatal; do not disable deployment notification or inject control-plane credentials manually to make CI green. After provisioning, rerun the failed `Check` publish job (or the original `Publish image` run for its existing commit).
 
 ## Migrations and rollout
 
@@ -72,8 +72,8 @@ A complete request is maintained in docs/hosting-request.md after container veri
 
 ## Production rollout request
 
-The infrastructure change is [workspace PR #84](https://github.com/crvouga/workspace/pull/84).
-The application change is [MovieFinder PR #1](https://github.com/crvouga/moviefinder/pull/1).
+The infrastructure change is [workspace PR #84](https://github.com/crvouga-organization/personal/pull/84).
+The application change is [MovieFinder PR #1](https://github.com/crvouga-organization/moviefinder/pull/1).
 The platform PR declares this repository as the owner of the new service and
 `moviefinder` schema, adds a namespace-only OpenTofu resource, registers a newly
 generated app-specific auth secret and retains application-owned publishing and

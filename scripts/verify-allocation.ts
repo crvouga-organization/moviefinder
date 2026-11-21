@@ -24,7 +24,7 @@ export function verifyAllocation(document: unknown) {
 }
 if (import.meta.main) {
   const response = await fetch(
-    "https://raw.githubusercontent.com/crvouga/workspace/main/packages/infra/tofu/modules/inventory/inventory.tf.json",
+    "https://raw.githubusercontent.com/crvouga-organization/personal/main/packages/infra/tofu/modules/inventory/inventory.tf.json",
     { signal: AbortSignal.timeout(15000) },
   );
   if (!response.ok) throw new Error("Could not verify the approved platform allocation.");
