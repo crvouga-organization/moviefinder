@@ -33,7 +33,7 @@ Google sign-in uses the shared relay's application registration API/UI, separate
 - Service ID proposed for infrastructure review: `moviefinder`; do not silently repurpose a legacy service.
 - Source: https://github.com/crvouga-organization/moviefinder, default branch main.
 - Requested origin: `https://moviefinder.chrisvouga.dev`, subject to central allocation/ownership review.
-- Image contract: `ghcr.io/crvouga-organization/chrisvouga-moviefinder:<git-sha>` and latest through the reusable shared workflow.
+- Image contract: `ghcr.io/crvouga/chrisvouga-moviefinder:<git-sha>` and latest through the reusable shared workflow.
 - Dockerfile/context: `./Dockerfile`, `.`. Three build/runtime dependency stages plus pinned Bun image source; one final stateless Bun process, unprivileged user, port 8080.
 - Liveness: `GET /health` → 200, independent of database, Vault, TMDB, and user authentication.
 - Readiness: authenticated `GET /api/ready`; PostgreSQL unavailable → 503.
