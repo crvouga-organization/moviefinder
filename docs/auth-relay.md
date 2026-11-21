@@ -15,7 +15,7 @@ Register the application in the matching relay console, or use the platform's [s
 
 Set `MOVIEFINDER_OIDC_ISSUER` and `MOVIEFINDER_OIDC_CLIENT_ID` to the registration's returned public settings. The callback always derives from `MOVIEFINDER_ORIGIN` plus `/api/auth/callback/auth-relay`; the requested scopes are `openid email profile`. Both settings must come from the same registration/environment. Production and nonproduction registrations, clients and issuers are independent. MovieFinder does not configure provider logout; signing out revokes the application session.
 
-For production, the infrastructure owner adds the two public settings to the `moviefinder` service's plain `env` in `crvouga/workspace`, then follows the platform release workflow. Callback registrations are runtime relay application data; they never belong in OpenTofu inventory. No database migration is needed for this integration: Better Auth's existing account, session and verification tables are reused.
+For production, the infrastructure owner adds the two public settings to the `moviefinder` service's plain `env` in `crvouga-organization/personal`, then follows the platform release workflow. Callback registrations are runtime relay application data; they never belong in OpenTofu inventory. No database migration is needed for this integration: Better Auth's existing account, session and verification tables are reused.
 
 Local startup normally selects an available port. Registered callbacks must keep their exact port.
 
