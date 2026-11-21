@@ -3,7 +3,7 @@
 Implement the requirements in [SPEC.md](SPEC.md). Read [README.md](README.md) and the relevant docs before changing domain behavior.
 
 Shared infra (Vault, PostgreSQL, R2, hosting): https://www.chrisvouga.dev/llms.txt
-Re-fetch that guide before infrastructure operations. The crvouga/workspace OpenTofu inventory is authoritative. Never migrate or write to shared PostgreSQL until the moviefinder schema allocation is explicitly approved. Never modify shared control-plane resources from this repository. Existing deployments in other repositories are separate targets; preserve them.
+Re-fetch that guide before infrastructure operations. The crvouga-organization/personal OpenTofu inventory is authoritative. Never migrate or write to shared PostgreSQL until the moviefinder schema allocation is explicitly approved. Never modify shared control-plane resources from this repository. Existing deployments in other repositories are separate targets; preserve them.
 
 Local development and default isolated database tests use the user-requested `embedded-postgres` package. `bun run dev` starts a loopback-only PostgreSQL cluster under ignored `.local/`, applies Atlas migrations, and stops the cluster with the dev servers while preserving data. Local commands ignore shared DATABASE_URL. Default db:check/db:migrate/db:status/db:drift target embedded PostgreSQL; explicit :shared variants use Vault and retain allocation safeguards. Never copy local credentials/data into source, images, or shared environments. `bun run test:local-database` verifies embedded persistence and shutdown in an isolated temporary directory.
 

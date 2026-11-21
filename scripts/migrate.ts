@@ -5,7 +5,7 @@ if (!["apply", "status", "diff", "drift"].includes(action))
   throw new Error("Expected apply, status, diff, or drift");
 if (action === "apply" && process.env.MOVIEFINDER_DATABASE_ALLOCATION !== "moviefinder")
   throw new Error(
-    "Blocked: MOVIEFINDER_DATABASE_ALLOCATION must confirm the approved moviefinder schema allocation. Obtain it via crvouga/workspace OpenTofu; never set it to bypass approval.",
+    "Blocked: MOVIEFINDER_DATABASE_ALLOCATION must confirm the approved moviefinder schema allocation. Obtain it via crvouga-organization/personal OpenTofu; never set it to bypass approval.",
   );
 if (action === "diff") {
   const child = Bun.spawn(["bun", "scripts/schema-diff.ts", process.argv[3] ?? "change"], {

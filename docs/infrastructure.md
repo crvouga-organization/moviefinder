@@ -1,10 +1,10 @@
 # Shared infrastructure integration
 
-The authoritative guide is https://www.chrisvouga.dev/llms.txt. Re-fetch it before each infrastructure operation. Inventory in crvouga/workspace takes precedence. This repository never provisions shared Vault/PostgreSQL/Railway/Cloudflare infrastructure, database/schema allocations, or control-plane credentials. At the user's request, local development runs an independent embedded PostgreSQL cluster; it never connects to shared PostgreSQL.
+The authoritative guide is https://www.chrisvouga.dev/llms.txt. Re-fetch it before each infrastructure operation. Inventory in crvouga-organization/personal takes precedence. This repository never provisions shared Vault/PostgreSQL/Railway/Cloudflare infrastructure, database/schema allocations, or control-plane credentials. At the user's request, local development runs an independent embedded PostgreSQL cluster; it never connects to shared PostgreSQL.
 
 ## Verified ownership and current boundary
 
-The target repository is `crvouga/moviefinder`. Its original checkout contained only SPEC.md. At implementation time, the published inventory has three older MovieFinder services owned by `moviefinder.app-rust`, `moviefinder.app-react`, and `moviefinder.app-clojurescript`. None names this repository, and no explicit `moviefinder` application schema allocation is recorded for this target. Those deployments have been preserved.
+The target repository is `crvouga-organization/moviefinder`. Its original checkout contained only SPEC.md. At implementation time, the published inventory has three older MovieFinder services owned by `moviefinder.app-rust`, `moviefinder.app-react`, and `moviefinder.app-clojurescript`. None names this repository, and no explicit `moviefinder` application schema allocation is recorded for this target. Those deployments have been preserved.
 
 Shared development diagnostics read only application catalog metadata through `bun run db:check`. No shared PostgreSQL DDL or write has been performed by this implementation. Automated local database verification uses isolated temporary embedded PostgreSQL clusters, or an explicit validated loopback TEST_DATABASE_URL. An available shared DATABASE_URL is not allocation authorization.
 
