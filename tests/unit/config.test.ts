@@ -108,7 +108,7 @@ import { verifyAllocation } from "../../scripts/verify-allocation";
 it("requires the merged platform ownership record before production migrations", () => {
   const entry = {
     id: "moviefinder",
-    github_repo: "crvouga/moviefinder",
+    github_repo: "crvouga-organization/moviefinder",
     database_schema: "moviefinder",
     manage_database_schema: true,
   };
@@ -116,7 +116,9 @@ it("requires the merged platform ownership record before production migrations",
   expect(() => verifyAllocation(inventory(entry))).not.toThrow();
   expect(() => verifyAllocation({})).toThrow("has not approved");
   expect(() =>
-    verifyAllocation(inventory({ ...entry, github_repo: "crvouga/moviefinder.app-rust" })),
+    verifyAllocation(
+      inventory({ ...entry, github_repo: "crvouga-organization/moviefinder.app-rust" }),
+    ),
   ).toThrow("has not approved");
   expect(() => verifyAllocation(inventory({ ...entry, database_schema: "public" }))).toThrow(
     "has not approved",

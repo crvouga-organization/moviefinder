@@ -14,12 +14,12 @@ export function verifyAllocation(document: unknown) {
   };
   const service = inventory.locals?.inventory?.services?.find((s) => s.id === "moviefinder");
   if (
-    service?.github_repo !== "crvouga/moviefinder" ||
+    service?.github_repo !== "crvouga-organization/moviefinder" ||
     service.database_schema !== "moviefinder" ||
     !service.manage_database_schema
   )
     throw new Error(
-      "Production migration blocked: crvouga/workspace main has not approved this repository’s moviefinder allocation.",
+      "Production migration blocked: crvouga-organization/personal main has not approved this repository’s moviefinder allocation.",
     );
 }
 if (import.meta.main) {
