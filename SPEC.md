@@ -24,7 +24,7 @@ Before changing application code, read the following documentation in full:
 
 https://www.chrisvouga.dev/llms.txt
 
-This is the authoritative consumer integration guide for the shared infrastructure managed by `crvouga-organization/personal`.
+This is the authoritative consumer integration guide for the shared infrastructure managed by `crvouga/personal`.
 
 Re-fetch it when performing infrastructure operations rather than relying on a previously saved copy.
 
@@ -40,7 +40,7 @@ Follow its requirements for:
 - Service health checks.
 - Deployment conventions.
 
-The OpenTofu inventory in `crvouga-organization/personal` takes precedence if the published integration guide is outdated.
+The OpenTofu inventory in `crvouga/personal` takes precedence if the published integration guide is outdated.
 
 ## 1.1 Project-owned resource isolation
 
@@ -58,7 +58,7 @@ Required resources:
 
 **Do not interpret project ownership as permission to create a separate Vault installation, PostgreSQL server, or Railway project outside the shared platform.**
 
-The shared infrastructure remains owned by `crvouga-organization/personal`.
+The shared infrastructure remains owned by `crvouga/personal`.
 
 Obtain the app's allocations and configure its integration through that infrastructure's documented OpenTofu workflow.
 
@@ -1156,7 +1156,7 @@ Do not create a parallel image-publishing process.
 
 ### Railway
 
-Deploy through the central `crvouga-organization/personal` OpenTofu inventory.
+Deploy through the central `crvouga/personal` OpenTofu inventory.
 
 Do not manually configure Railway infrastructure outside the authoritative system.
 
@@ -1164,7 +1164,7 @@ Before opening a new hosting request, check whether MovieFinder already has an a
 
 If one exists, follow the documented process for updating it rather than creating a duplicate.
 
-If an infrastructure change is required in `crvouga-organization/personal`, prepare a complete change request containing resource allocations, required secret names, image contract, deployment settings, migration procedure, health checks, and operational requirements.
+If an infrastructure change is required in `crvouga/personal`, prepare a complete change request containing resource allocations, required secret names, image contract, deployment settings, migration procedure, health checks, and operational requirements.
 
 Do not modify shared control-plane services from the application repository.
 

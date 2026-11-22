@@ -1,10 +1,10 @@
 # Shared infrastructure integration
 
-The authoritative guide is https://www.chrisvouga.dev/llms.txt. Re-fetch it before each infrastructure operation. Inventory in crvouga-organization/personal takes precedence. This repository never provisions shared Vault/PostgreSQL/Railway/Cloudflare infrastructure, database/schema allocations, or control-plane credentials. At the user's request, local development runs an independent embedded PostgreSQL cluster; it never connects to shared PostgreSQL.
+The authoritative guide is https://www.chrisvouga.dev/llms.txt. Re-fetch it before each infrastructure operation. Inventory in crvouga/personal takes precedence. This repository never provisions shared Vault/PostgreSQL/Railway/Cloudflare infrastructure, database/schema allocations, or control-plane credentials. At the user's request, local development runs an independent embedded PostgreSQL cluster; it never connects to shared PostgreSQL.
 
 ## Verified ownership and current boundary
 
-The target repository is `crvouga-organization/moviefinder`. Its original checkout contained only SPEC.md. At implementation time, the published inventory has three older MovieFinder services owned by `moviefinder.app-rust`, `moviefinder.app-react`, and `moviefinder.app-clojurescript`. None names this repository, and no explicit `moviefinder` application schema allocation is recorded for this target. Those deployments have been preserved.
+The target repository is `crvouga/moviefinder`. Its original checkout contained only SPEC.md. At implementation time, the published inventory has three older MovieFinder services owned by `moviefinder.app-rust`, `moviefinder.app-react`, and `moviefinder.app-clojurescript`. None names this repository, and no explicit `moviefinder` application schema allocation is recorded for this target. Those deployments have been preserved.
 
 Shared development diagnostics read only application catalog metadata through `bun run db:check`. No shared PostgreSQL DDL or write has been performed by this implementation. Automated local database verification uses isolated temporary embedded PostgreSQL clusters, or an explicit validated loopback TEST_DATABASE_URL. An available shared DATABASE_URL is not allocation authorization.
 
@@ -31,7 +31,7 @@ Google sign-in uses the shared relay's application registration API/UI, separate
 ## Image and fleet contract
 
 - Service ID proposed for infrastructure review: `moviefinder`; do not silently repurpose a legacy service.
-- Source: https://github.com/crvouga-organization/moviefinder, default branch main.
+- Source: https://github.com/crvouga/moviefinder, default branch main.
 - Requested origin: `https://moviefinder.chrisvouga.dev`, subject to central allocation/ownership review.
 - Image contract: `ghcr.io/crvouga/chrisvouga-moviefinder:<git-sha>` and latest through the reusable shared workflow.
 - Dockerfile/context: `./Dockerfile`, `.`. Three build/runtime dependency stages plus pinned Bun image source; one final stateless Bun process, unprivileged user, port 8080.
@@ -44,7 +44,7 @@ Google sign-in uses the shared relay's application registration API/UI, separate
 
 The `publish` job in `.github/workflows/check.yml` calls the platform's reusable GHCR publishing/deploy-dispatch workflow after all three validation jobs pass on a main push. This repository owns its workflows (`managed_publisher = false` in the platform inventory); it has no separate publisher workflow. Do not publish images manually, use Railway builds, run railway up, or change Railway/DNS outside inventory. Build without secrets. Runtime configuration is never copied into the image. The optional live smoke workflow uses GitHub OIDC with exportEnv:false and exposes only the requested key to its single command.
 
-The first main publish run [built and pushed the image but failed deployment notification](https://github.com/crvouga-organization/moviefinder/actions/runs/38994345928) because this repository has no `DEPLOY_DISPATCH_TOKEN`. [Workspace PR #84](https://github.com/crvouga-organization/personal/pull/84) is merged, but its [foundation provisioning run failed](https://github.com/crvouga-organization/personal/actions/runs/38996724204) trying to import the nonexistent `moviefinder:production` GitHub environment. The platform must correct environment adoption in `packages/infra/tofu/foundation/repository.tf` and apply foundation provisioning to supply the managed dispatch credential before publishing can complete. Keep missing credentials fatal; do not disable deployment notification or inject control-plane credentials manually to make CI green. After provisioning, rerun the failed `Check` publish job (or the original `Publish image` run for its existing commit).
+The first main publish run [built and pushed the image but failed deployment notification](https://github.com/crvouga/moviefinder/actions/runs/38994345928) because this repository has no `DEPLOY_DISPATCH_TOKEN`. [Workspace PR #84](https://github.com/crvouga/personal/pull/84) is merged, but its [foundation provisioning run failed](https://github.com/crvouga/personal/actions/runs/38996724204) trying to import the nonexistent `moviefinder:production` GitHub environment. The platform must correct environment adoption in `packages/infra/tofu/foundation/repository.tf` and apply foundation provisioning to supply the managed dispatch credential before publishing can complete. Keep missing credentials fatal; do not disable deployment notification or inject control-plane credentials manually to make CI green. After provisioning, rerun the failed `Check` publish job (or the original `Publish image` run for its existing commit).
 
 ## Migrations and rollout
 
@@ -72,8 +72,8 @@ A complete request is maintained in docs/hosting-request.md after container veri
 
 ## Production rollout request
 
-The infrastructure change is [workspace PR #84](https://github.com/crvouga-organization/personal/pull/84).
-The application change is [MovieFinder PR #1](https://github.com/crvouga-organization/moviefinder/pull/1).
+The infrastructure change is [workspace PR #84](https://github.com/crvouga/personal/pull/84).
+The application change is [MovieFinder PR #1](https://github.com/crvouga/moviefinder/pull/1).
 The platform PR declares this repository as the owner of the new service and
 `moviefinder` schema, adds a namespace-only OpenTofu resource, registers a newly
 generated app-specific auth secret and retains application-owned publishing and
