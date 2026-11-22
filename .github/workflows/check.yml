@@ -1,6 +1,7 @@
 name: Check
 on:
   pull_request:
+    paths-ignore: ['**.md', 'docs/**']
   merge_group:
   push:
     branches: [main]
