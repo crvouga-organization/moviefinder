@@ -14,17 +14,17 @@ export function verifyAllocation(document: unknown) {
   };
   const service = inventory.locals?.inventory?.services?.find((s) => s.id === "moviefinder");
   if (
-    service?.github_repo !== "crvouga-organization/moviefinder" ||
+    service?.github_repo !== "crvouga/moviefinder" ||
     service.database_schema !== "moviefinder" ||
     !service.manage_database_schema
   )
     throw new Error(
-      "Production migration blocked: crvouga-organization/personal main has not approved this repository’s moviefinder allocation.",
+      "Production migration blocked: crvouga/personal main has not approved this repository’s moviefinder allocation.",
     );
 }
 if (import.meta.main) {
   const response = await fetch(
-    "https://raw.githubusercontent.com/crvouga-organization/personal/main/packages/infra/tofu/modules/inventory/inventory.tf.json",
+    "https://raw.githubusercontent.com/crvouga/personal/main/packages/infra/tofu/modules/inventory/inventory.tf.json",
     { signal: AbortSignal.timeout(15000) },
   );
   if (!response.ok) throw new Error("Could not verify the approved platform allocation.");

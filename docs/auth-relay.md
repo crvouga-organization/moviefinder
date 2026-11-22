@@ -1,12 +1,12 @@
 # Google sign-in through the shared relay
 
-MovieFinder uses the shared Google-to-OIDC relay described in the [consumer guide](https://www.chrisvouga.dev/llms.txt) and its [current source](https://github.com/crvouga-organization/personal/blob/main/llms.txt#6-auth-relay-google-sign-in). Current canonical inventory declares `enabled: true`, `live: true`, with status `preproduction`. Nonproduction discovery returned HTTP 200 with the expected issuer. These observations do not establish production acceptance; consult the platform's [acceptance record](https://github.com/crvouga-organization/personal/blob/main/packages/auth-relay/acceptance.md).
+MovieFinder uses the shared Google-to-OIDC relay described in the [consumer guide](https://www.chrisvouga.dev/llms.txt) and its [current source](https://github.com/crvouga/personal/blob/main/llms.txt#6-auth-relay-google-sign-in). Current canonical inventory declares `enabled: true`, `live: true`, with status `preproduction`. Nonproduction discovery returned HTTP 200 with the expected issuer. These observations do not establish production acceptance; consult the platform's [acceptance record](https://github.com/crvouga/personal/blob/main/packages/auth-relay/acceptance.md).
 
 MovieFinder receives no Google credentials, relay manager/setup credentials or OIDC client secret. The existing MovieFinder auth secret continues to secure its own sessions. Google is the only authentication method. Missing relay settings fail production startup; development may start with sign-in unavailable. There is no password fallback. Password registration, email/username sign-in and password recovery endpoints are disabled on the server. Partial or environment-mismatched OIDC configuration fails startup.
 
 ## Registration and runtime configuration
 
-Register the application in the matching relay console, or use the platform's [scoped registration client](https://github.com/crvouga-organization/personal/blob/main/packages/auth-relay/agent.ts) with an operator-approved credential. Use project `moviefinder`, a distinct immutable instance for each concurrently running server/preview, the appropriate environment (`localhost`, staging/preview or production), and an explicit expiry within its grant. Do not copy another application's client ID. Exact callbacks are:
+Register the application in the matching relay console, or use the platform's [scoped registration client](https://github.com/crvouga/personal/blob/main/packages/auth-relay/agent.ts) with an operator-approved credential. Use project `moviefinder`, a distinct immutable instance for each concurrently running server/preview, the appropriate environment (`localhost`, staging/preview or production), and an explicit expiry within its grant. Do not copy another application's client ID. Exact callbacks are:
 
 | Deployment                 | Issuer                                                | Callback                                                          |
 | -------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------- |
@@ -15,7 +15,7 @@ Register the application in the matching relay console, or use the platform's [s
 
 Set `MOVIEFINDER_OIDC_ISSUER` and `MOVIEFINDER_OIDC_CLIENT_ID` to the registration's returned public settings. The callback always derives from `MOVIEFINDER_ORIGIN` plus `/api/auth/callback/auth-relay`; the requested scopes are `openid email profile`. Both settings must come from the same registration/environment. Production and nonproduction registrations, clients and issuers are independent. MovieFinder does not configure provider logout; signing out revokes the application session.
 
-For production, the infrastructure owner adds the two public settings to the `moviefinder` service's plain `env` in `crvouga-organization/personal`, then follows the platform release workflow. Callback registrations are runtime relay application data; they never belong in OpenTofu inventory. No database migration is needed for this integration: Better Auth's existing account, session and verification tables are reused.
+For production, the infrastructure owner adds the two public settings to the `moviefinder` service's plain `env` in `crvouga/personal`, then follows the platform release workflow. Callback registrations are runtime relay application data; they never belong in OpenTofu inventory. No database migration is needed for this integration: Better Auth's existing account, session and verification tables are reused.
 
 Local startup normally selects an available port. Registered callbacks must keep their exact port.
 

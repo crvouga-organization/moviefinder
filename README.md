@@ -76,7 +76,7 @@ See [architecture](docs/architecture.md), [entity store](docs/entity-store.md), 
 
 ## Deployment status
 
-The shared inventory records the `moviefinder` service for `crvouga-organization/moviefinder`, its `moviefinder` schema allocation, and `https://moviefinder.chrisvouga.dev`. A production deployment already exists; its health response alone does not verify Google-only sign-in. The inventory checked on 2026-10-25 does not yet include the public OIDC settings required by the new production startup guard. An approved production relay registration and platform configuration are rollout prerequisites. See [infrastructure](docs/infrastructure.md) and [Google sign-in setup](docs/auth-relay.md).
+The shared inventory records the `moviefinder` service for `crvouga/moviefinder`, its `moviefinder` schema allocation, and `https://moviefinder.chrisvouga.dev`. A production deployment already exists; its health response alone does not verify Google-only sign-in. The inventory checked on 2026-10-25 does not yet include the public OIDC settings required by the new production startup guard. An approved production relay registration and platform configuration are rollout prerequisites. See [infrastructure](docs/infrastructure.md) and [Google sign-in setup](docs/auth-relay.md).
 
 Local development is ready independently of these production allocation requirements. Build the container with `docker build -t moviefinder:verification .`. Runtime secrets are supplied as environment variables, never build arguments. `/health` is public and independent of PostgreSQL. `/api/ready` and `/api/metrics` require authentication. See the infrastructure document before attempting rollout.
 
