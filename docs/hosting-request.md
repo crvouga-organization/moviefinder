@@ -10,8 +10,8 @@ Suggested issue title: `[hosting] moviefinder — approve isolated social discov
 | ------------------ | ------------------------------------------------------------------------------------------------------------- |
 | Service id         | `moviefinder` — proposed; central inventory/ownership review required                                         |
 | Summary            | Authenticated movie/TV discovery with personal opinions, public profiles, and collaborative realtime lists.   |
-| Source repo        | `crvouga/moviefinder` (public), default branch `main`                                            |
-| Source code URL    | https://github.com/crvouga/moviefinder                                                           |
+| Source repo        | `crvouga/moviefinder` (public), default branch `main`                                                         |
+| Source code URL    | https://github.com/crvouga/moviefinder                                                                        |
 | Requested hostname | `moviefinder.chrisvouga.dev`, subject to approval against existing MovieFinder deployment roles               |
 | Kind               | HTTP server serving React, Hono APIs, Better Auth, and SSE                                                    |
 | Stack              | TypeScript 7.0.2, React 19.3.1, Vite+ 1.2.0, Hono 4.13.13, Better Auth 1.7.10, Bun 1.4.2; Bun package manager |
@@ -96,7 +96,7 @@ The container smoke injects disposable process-only test values, uses an intenti
 | Title             | MovieFinder                                                                                                                                                                                                                 |
 | Setting           | side                                                                                                                                                                                                                        |
 | Deployment        | not-deployed-yet                                                                                                                                                                                                            |
-| Code              | public: https://github.com/crvouga/moviefinder                                                                                                                                                                 |
+| Code              | public: https://github.com/crvouga/moviefinder                                                                                                                                                                              |
 | Description       | Find films and TV through a mobile poster feed, record your taste, and curate public lists with friends. A selective TMDB replica, normalized reactive state, and durable event replay keep collaborative edits consistent. |
 | Topics            | typescript, react, bun, postgres, react-query, mantine, zod, docker                                                                                                                                                         |
 | Screenshots       | Capture from the approved deployment after rollout; local verification screenshots contain test fixtures.                                                                                                                   |
