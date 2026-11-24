@@ -2,6 +2,37 @@
 
 Updated on 2026-10-25 (America/Phoenix). This is an implementation handoff, not a claim of completed production deployment.
 
+## Feed-first social rewrite — 2026-11-24
+
+The product was rebuilt as a feed-first social app in the style of Instagram and TikTok. The sections below this one describe the previous discovery/tags/lists product and are kept as history; where they conflict, this section is current.
+
+**Delivered**
+
+- Public reading: the SPA is served to everyone, and `/api/state`, `/api/feed`, `/api/accounts/:id`, `/api/posts/:id`, `/api/search` and `/api/events` work without a session. Commands, `/api/ready` and `/api/metrics` require one. Visitor interactions open a sign-in prompt.
+- Heterogeneous posts: catalog posts are derived deterministically from cached TMDB records (`src/shared/posts.ts`): poster, trailers/teasers/clips, still galleries, cast galleries, alternative posters, backdrop, season art, profile photos and known-for galleries. Hydration now requests TMDB `images`. Members create posts with a caption, an optional tagged title/person and up to ten of its images.
+- Feeds: For You (trending, or popular by topic chip, with member posts woven in), Following (followed movies, shows, people and members), Explore (grid plus account search), and `/watch`, which plays any profile tab or Explore grid as a vertical feed from the tapped post. Feed ordering is append-only.
+- Account profiles for movies, series, people and members: counts, follow, overview/facts, tabs (Posts, Videos, Community, Cast, Related, Credits, Likes), plus profile editing and sign-out.
+- Interactions: likes, follows, comments (author or post-owner deletion), and post create/delete. All are optimistic, with operation receipts and transactional counters. Likes and follows are versioned toggles; events are public, except a member's own likes and follows.
+- Schema: additive Atlas migration `20261124090757_social_feed` adds `post`, `post_like`, `comment`, `post_engagement` and `account_stat`, and allows movie/tv/person follow targets. The legacy tag, list, collaboration, saved-feed and activity tables are untouched and unused; dropping them needs a separately reviewed destructive migration.
+
+**Verification (local, 2026-11-24)**
+
+| Command                                             | Result                                                                                                          |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `bun run check`                                     | Passed: format, lint (no warnings), types, 13 files / 79 unit and property tests                                |
+| `bun run build`                                     | Passed. The bundle-size warning was already present before this change (1.32 MB now vs 1.38 MB before)          |
+| `bun run test:integration`                          | Passed: 32 tests (application and auth relay) on isolated embedded PostgreSQL                                   |
+| `bun run test:e2e`                                  | Passed: 28 tests across mobile and desktop Chromium, including axe scans and zero-tolerance layout-shift checks |
+| `bun run test:observability`                        | Passed: 2 tests                                                                                                 |
+| `bun run test:local-database`                       | Passed                                                                                                          |
+| `bun run db:validate`, `bun run db:verify`          | Passed: hashes valid; replay matches `atlas/schema.sql`                                                         |
+| `bun run perf --titles 400 --seed 200 --throttle 1` | Completed: first For You render 0.6 s, profile with every tab 0.4–0.5 s each                                    |
+
+**Not verified**
+
+- The container smoke script was updated for the new public boundary (operator API 401, public deep link 200) but was not run.
+- The live TMDB smoke test, shared-database migration and production deployment were not run. Applying the new migration to the shared schema still needs the documented allocation approval.
+
 ## Delivered application
 
 The repository now contains a functioning TypeScript/Bun application rather than only a specification. React 19, Vite+, TanStack Router, Mantine, Swiper, TanStack DB Query Collections, Hono RPC, Better Auth, Drizzle, PostgreSQL, Atlas, Zod, and Playwright are integrated.

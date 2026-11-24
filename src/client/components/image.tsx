@@ -11,7 +11,11 @@ export function Image({
   priority = false,
   className,
   fallback = null,
+  fit = "cover",
+  radius = "md",
 }: {
+  fit?: "cover" | "contain";
+  radius?: "md" | "xl" | 0;
   images: readonly ImageSource[];
   slot: SlotName;
   alt?: string;
@@ -30,8 +34,8 @@ export function Image({
     <MantineImage
       h="100%"
       w="100%"
-      fit="cover"
-      radius="md"
+      fit={fit}
+      radius={radius}
       className={className}
       src={resolved.src}
       srcSet={resolved.srcSet}

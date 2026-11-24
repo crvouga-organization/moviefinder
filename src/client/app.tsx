@@ -1,48 +1,32 @@
-import { parseSearch, stringifySearch } from "../shared/search";
-import { useEffect, Suspense, Profiler, type ProfilerOnRenderCallback } from "react";
+import { useEffect, Profiler, type ProfilerOnRenderCallback, type ReactNode } from "react";
 import {
   createRootRoute,
   createRoute,
   createRouter,
   Link,
+  Navigate,
   Outlet,
-  useLocation,
-  useNavigate,
   RouterProvider,
-  useRouter,
+  useLocation,
 } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
-import {
-  Alert,
-  Group,
-  Anchor,
-  AppShell,
-  Button,
-  Center,
-  Container,
-  Skeleton,
-  Stack,
-  Text,
-  ThemeIcon,
-  Title,
-} from "@mantine/core";
+import { Anchor, Center, Stack, Text, Title } from "@mantine/core";
+import { parseSearch, stringifySearch } from "../shared/search";
+import { accountId, postId, topics, userAccount } from "../shared/contracts";
 import { authClient } from "./auth-client";
 import { rememberUser } from "./session";
-import { collections, startSync, stopSync } from "./state";
-import { startNavigationPreloading } from "./preloading";
-import { report } from "./notifications";
-import Navigation from "./components/navigation";
-import { AuthPage } from "./pages/auth";
-import { Discover } from "./pages/discover";
-import { DetailPage } from "./pages/details";
-import { SearchPage } from "./pages/search";
-import { ListsPage, ListDetail } from "./pages/lists";
-import { ActivityPage, ProfilePage, ProfileHeader } from "./pages/social";
+import { report, startSync, useViewer } from "./state";
+import { Shell } from "./components/shell";
+import { SignInPrompt } from "./components/sign-in-prompt";
 import { Toast } from "./components/toast";
-import { ViewerProvider } from "./components/viewer";
-import { Screen } from "./components/screen";
-import { PageHeading } from "./components/common";
-import { track, telemetryEnabled, beginNavigation, resolveNavigation } from "./telemetry";
+import { AuthPage } from "./pages/auth";
+import { HomePage } from "./pages/home";
+import { ExplorePage } from "./pages/explore";
+import { AccountPage } from "./pages/account";
+import { PostPage } from "./pages/post";
+import { WatchPage } from "./pages/watch";
+import { CreatePage } from "./pages/create";
+import { GoogleSignIn } from "./components/google";
+import { beginNavigation, resolveNavigation, telemetryEnabled, track } from "./telemetry";
 
 const commit: ProfilerOnRenderCallback = (id, phase, actual, base) => {
   if (actual >= 8)
@@ -53,7 +37,7 @@ const commit: ProfilerOnRenderCallback = (id, phase, actual, base) => {
       path: location.pathname,
     });
 };
-function Profiled({ id, children }: { id: string; children: React.ReactNode }) {
+function Profiled({ id, children }: { id: string; children: ReactNode }) {
   return telemetryEnabled ? (
     <Profiler id={id} onRender={commit}>
       {children}
@@ -62,262 +46,140 @@ function Profiled({ id, children }: { id: string; children: React.ReactNode }) {
     children
   );
 }
-
-// All route components are available before the app becomes interactive. Navigation never
-// depends on downloading a screen chunk, data readiness, provider hydration or artwork.
+// Every route is public. The session only decides whether interactions are available.
 function Root() {
-  const isAuth = useLocation({ select: (location) => location.pathname.startsWith("/auth") }),
-    navigate = useNavigate(),
-    session = authClient.useSession();
+  const isAuth = useLocation({ select: (location) => location.pathname.startsWith("/auth") });
+  const session = authClient.useSession();
   useEffect(() => {
     if (!session.isPending) rememberUser(session.data?.user.id);
   }, [session.isPending, session.data?.user.id]);
   useEffect(() => {
-    if (!isAuth && !session.isPending && !session.data)
-      void navigate({
-        to: "/auth",
-        search: { returnTo: router.state.location.href },
-        replace: true,
-      });
-  }, [session.isPending, session.data, isAuth]);
-  useEffect(() => {
-    if (session.data && !isAuth) void startSync(session.data.user.id).catch(report);
-    if (isAuth) stopSync();
-  }, [session.data?.user.id, isAuth]);
-  useEffect(() => {
-    if (!session.data || isAuth) return;
-    const preloading = startNavigationPreloading(session.data.user.id);
-    const stopBefore = router.subscribe("onBeforeNavigate", preloading.pause);
-    const stopAfter = router.subscribe("onResolved", preloading.resume);
-    return () => {
-      stopBefore();
-      stopAfter();
-      preloading();
-    };
-  }, [session.data?.user.id, isAuth]);
+    void startSync().catch(report);
+  }, []);
   if (isAuth)
     return (
       <>
-        <Suspense fallback={<RoutePlaceholder />}>
-          <Outlet />
-        </Suspense>
+        <Outlet />
         <Toast />
       </>
     );
-  if (!session.data)
-    return (
-      <Center mih="100dvh">
-        <Stack align="center" gap="md">
-          <ThemeIcon variant="light" size="xl">
-            <Text component="span" size="xl" lh={1} aria-hidden="true">
-              🍿
-            </Text>
-          </ThemeIcon>
-          <Title order={1}>MovieFinder</Title>
-          <Text c="dimmed" role="status">
-            {session.isPending ? "Restoring session…" : "Sign in to continue."}
-          </Text>
-          {session.isPending && <Skeleton h="var(--mantine-spacing-sm)" w="10rem" />}
-        </Stack>
-      </Center>
-    );
   return (
-    <ViewerProvider userId={session.data.user.id}>
-      <Navigation userId={session.data.user.id}>
-        <MainContent />
-      </Navigation>
+    <>
+      <Shell>
+        <Profiled id="screen">
+          <Outlet />
+        </Profiled>
+      </Shell>
+      <SignInPrompt />
       <Toast />
-    </ViewerProvider>
+    </>
   );
 }
-function RoutePlaceholder() {
+function NotFound() {
   return (
-    <Stack aria-label="Opening this page" aria-busy="true">
-      <Skeleton h="var(--mantine-spacing-xl)" w="60%" />
-      <Skeleton h="var(--mantine-spacing-sm)" w="40%" />
-    </Stack>
+    <Center mih="60dvh" p="xl">
+      <Stack align="center" gap="sm">
+        <Title order={1}>Page not found</Title>
+        <Text c="dimmed">This page doesn’t exist.</Text>
+        <Anchor renderRoot={(props) => <Link {...props} to="/" />}>Back to For You</Anchor>
+      </Stack>
+    </Center>
   );
 }
-// Only the outlet and active navigation subscribe to pathname changes. Opening a route must
-// not rerun the app-wide collection queries and indexes in ViewerProvider.
-function MainContent() {
-  const pathname = useLocation({ select: (location) => location.pathname });
-  return (
-    <AppShell.Main id="main-content" data-route={pathname} tabIndex={-1}>
-      <Container>
-        <Suspense key={pathname} fallback={<RoutePlaceholder />}>
-          <Profiled id="screen">
-            <Outlet />
-          </Profiled>
-        </Suspense>
-      </Container>
-    </AppShell.Main>
-  );
-}
+const topicIds: string[] = topics.map((t) => t.id);
+const topicOf = (value: unknown) =>
+  typeof value === "string" && topicIds.includes(value) ? value : "all";
+const text = (value: unknown) => (typeof value === "string" ? value : undefined);
 
-function useCurrentUser() {
-  return authClient.useSession().data?.user.id ?? "";
-}
-function PageScreen({ children }: { children: React.ReactNode }) {
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const userId = useCurrentUser();
-  const segments = pathname.split("/").filter(Boolean).map(decodeURIComponent);
-  const title =
-    segments[0] === "lists"
-      ? segments[1]
-        ? (collections.list.get(segments[1])?.title ?? "List")
-        : "Lists"
-      : segments[0] === "profile"
-        ? (collections.user.get(segments[1] ?? userId)?.title ?? "Profile")
-        : segments[0] === "activity"
-          ? "Activity"
-          : segments[0] === "search"
-            ? "Search"
-            : "Discover";
-  return (
-    <Screen
-      preview={
-        <Stack data-screen-preview aria-busy="true" gap="lg">
-          {segments[0] === "profile" ? (
-            <ProfileHeader
-              user={collections.user.get(segments[1] ?? userId)}
-              own={!segments[1] || segments[1] === userId}
-            />
-          ) : (
-            <>
-              {segments[0] === "lists" && segments[1] && (
-                <Anchor renderRoot={(props) => <Link {...props} to="/lists" />}>
-                  <Group gap="xs">
-                    <ArrowLeft size={16} />
-                    Back to lists
-                  </Group>
-                </Anchor>
-              )}
-              <PageHeading title={title} />
-            </>
-          )}
-          <RoutePlaceholder />
-        </Stack>
-      }
-    >
-      {children}
-    </Screen>
-  );
-}
-const root = createRootRoute({
-  component: Root,
-  validateSearch: (search: Record<string, unknown>) => search,
-  notFoundComponent: () => (
-    <Stack>
-      <PageHeading title="Page not found" />
-      <Text c="dimmed">The requested page does not exist.</Text>
-      <Anchor renderRoot={(props) => <Link {...props} to="/" />}>Back to Discover</Anchor>
-    </Stack>
-  ),
-});
-
+const root = createRootRoute({ component: Root, notFoundComponent: NotFound });
 const home = createRoute({
   getParentRoute: () => root,
   path: "/",
-  component: () => (
-    <PageScreen>
-      <Discover userId={useCurrentUser()} />
-    </PageScreen>
-  ),
+  validateSearch: (search: Record<string, unknown>): { topic?: string } =>
+    topicOf(search.topic) === "all" ? {} : { topic: topicOf(search.topic) },
+  component: function Home() {
+    const { topic } = home.useSearch();
+    return <HomePage feed="foryou" topic={topic ?? "all"} />;
+  },
+});
+const following = createRoute({
+  getParentRoute: () => root,
+  path: "/following",
+  component: () => <HomePage feed="following" topic="all" />,
+});
+const explore = createRoute({
+  getParentRoute: () => root,
+  path: "/explore",
+  validateSearch: (search: Record<string, unknown>): { q?: string; topic?: string } => ({
+    ...(text(search.q)?.trim() ? { q: text(search.q)!.trim().slice(0, 200) } : {}),
+    ...(topicOf(search.topic) !== "all" ? { topic: topicOf(search.topic) } : {}),
+  }),
+  component: function Explore() {
+    const { q, topic } = explore.useSearch();
+    return <ExplorePage q={q ?? ""} topic={topic ?? "all"} />;
+  },
+});
+const account = createRoute({
+  getParentRoute: () => root,
+  path: "/account/$id",
+  component: function Account() {
+    const { id } = account.useParams();
+    return accountId.safeParse(id).success ? <AccountPage key={id} id={id} /> : <NotFound />;
+  },
+});
+const post = createRoute({
+  getParentRoute: () => root,
+  path: "/post/$id",
+  component: function Post() {
+    const { id } = post.useParams();
+    return postId.safeParse(id).success ? <PostPage key={id} id={id} /> : <NotFound />;
+  },
+});
+const watch = createRoute({
+  getParentRoute: () => root,
+  path: "/watch",
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): { account?: string; tab?: string; feed?: "explore"; topic?: string; start?: string } => ({
+    ...(accountId.safeParse(search.account).success ? { account: String(search.account) } : {}),
+    ...(text(search.tab) ? { tab: text(search.tab) } : {}),
+    ...(search.feed === "explore" ? { feed: "explore" as const } : {}),
+    ...(topicOf(search.topic) !== "all" ? { topic: topicOf(search.topic) } : {}),
+    ...(postId.safeParse(search.start).success ? { start: String(search.start) } : {}),
+  }),
+  component: function Watch() {
+    return <WatchPage {...watch.useSearch()} />;
+  },
+});
+const create = createRoute({ getParentRoute: () => root, path: "/create", component: CreatePage });
+const me = createRoute({
+  getParentRoute: () => root,
+  path: "/me",
+  component: function Me() {
+    const viewer = useViewer();
+    const session = authClient.useSession();
+    if (viewer) return <Navigate to="/account/$id" params={{ id: userAccount(viewer) }} replace />;
+    if (session.isPending) return null;
+    return (
+      <Center mih="60dvh" p="xl">
+        <Stack gap="md" maw="24rem">
+          <Title order={1}>Your profile</Title>
+          <Text c="dimmed">Sign in to set up your profile, follow accounts and post.</Text>
+          <GoogleSignIn returnTo="/me" />
+        </Stack>
+      </Center>
+    );
+  },
 });
 const auth = createRoute({ getParentRoute: () => root, path: "/auth", component: AuthPage });
-const search = createRoute({
-  getParentRoute: () => root,
-  path: "/search",
-  component: () => (
-    <PageScreen>
-      <SearchPage />
-    </PageScreen>
-  ),
-});
-const lists = createRoute({
-  getParentRoute: () => root,
-  path: "/lists",
-  component: () => (
-    <PageScreen>
-      <ListsPage userId={useCurrentUser()} />
-    </PageScreen>
-  ),
-});
-const list = createRoute({
-  getParentRoute: () => root,
-  path: "/lists/$listId",
-  component: () => (
-    <PageScreen>
-      <ListDetail userId={useCurrentUser()} />
-    </PageScreen>
-  ),
-});
-const detail = createRoute({
-  getParentRoute: () => root,
-  path: "/title/$id",
-  component: () => <DetailPage userId={useCurrentUser()} />,
-});
-const activity = createRoute({
-  getParentRoute: () => root,
-  path: "/activity",
-  component: () => (
-    <PageScreen>
-      <ActivityPage userId={useCurrentUser()} />
-    </PageScreen>
-  ),
-});
-const profile = createRoute({
-  getParentRoute: () => root,
-  path: "/profile",
-  component: () => (
-    <PageScreen>
-      <ProfilePage currentUserId={useCurrentUser()} />
-    </PageScreen>
-  ),
-});
-const publicProfile = createRoute({
-  getParentRoute: () => root,
-  path: "/profile/$userId",
-  component: () => (
-    <PageScreen>
-      <ProfilePage currentUserId={useCurrentUser()} />
-    </PageScreen>
-  ),
-});
-function ScreenError() {
-  const currentRouter = useRouter();
-  return (
-    <Stack>
-      <PageHeading title="Unable to open page" />
-      <Alert color="red" title="Page error">
-        Please try again.
-      </Alert>
-      <Button onClick={() => void currentRouter.invalidate()}>Try again</Button>
-      <Anchor renderRoot={(props) => <Link {...props} to="/" />}>Back to Discover</Anchor>
-    </Stack>
-  );
-}
 
 export const router = createRouter({
   parseSearch,
   stringifySearch,
-  routeTree: root.addChildren([
-    home,
-    auth,
-    search,
-    lists,
-    list,
-    detail,
-    activity,
-    profile,
-    publicProfile,
-  ]),
+  routeTree: root.addChildren([home, following, explore, account, post, watch, create, me, auth]),
   scrollRestoration: true,
   defaultPreload: false,
-  // Route commitment has no asynchronous data or media prerequisites.
   defaultPendingMs: 0,
-  defaultErrorComponent: ScreenError,
   defaultPendingMinMs: 0,
 });
 declare module "@tanstack/react-router" {
@@ -329,7 +191,6 @@ if (telemetryEnabled) {
   router.subscribe("onBeforeNavigate", (e) => beginNavigation(e.toLocation.href));
   router.subscribe("onResolved", (e) => resolveNavigation(e.toLocation.href));
 }
-
 export function App() {
   return <RouterProvider router={router} />;
 }

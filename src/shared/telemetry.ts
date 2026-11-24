@@ -10,11 +10,22 @@ export const isTraceId = (value: unknown): value is string =>
   typeof value === "string" &&
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const staticPaths = new Set(
-  "movie tv person season episode trending all day week credits combined_credits watch providers recommendations api auth get-session sign-in sign-up email sign-out health ready metrics auth-options state events telemetry discover title titles command lists profile activity search people followers following invitations accept decline password reset-password request-password-reset callback google social profiles list users social-search".split(
+  "movie tv person season episode trending all day week credits combined_credits watch providers recommendations api auth get-session sign-in sign-up email sign-out health ready metrics auth-options state events telemetry discover title titles command lists profile activity search people followers following invitations accept decline password reset-password request-password-reset callback google social profiles list users social-search feed accounts posts account post explore watch create me".split(
     " ",
   ),
 );
-const dynamic = new Set(["title", "profile", "profiles", "lists", "list", "users"]);
+const dynamic = new Set([
+  "title",
+  "profile",
+  "profiles",
+  "lists",
+  "list",
+  "users",
+  "accounts",
+  "posts",
+  "account",
+  "post",
+]);
 export function routeName(value: string) {
   const parts = (value.split(/[?#]/)[0] ?? "/").split("/").filter(Boolean);
   const offset = parts[0] === "api" ? 1 : 0;
@@ -33,7 +44,7 @@ export function routeName(value: string) {
   );
 }
 const sqlTables = new Set(
-  "user session account verification source_entity query_cache sync_job sync_checkpoint title_status list list_item collaborator invitation follow saved_feed activity event operation".split(
+  "user session account verification source_entity query_cache sync_job sync_checkpoint title_status list list_item collaborator invitation follow saved_feed activity event operation post post_like comment post_engagement account_stat".split(
     " ",
   ),
 );

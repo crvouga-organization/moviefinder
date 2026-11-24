@@ -55,11 +55,17 @@ export type ImageSlot = {
 };
 
 export const slots = {
-  /** Full-bleed discovery slide. */
+  /** Full-height feed post. */
   feed: {
     shapes: ["portrait", "landscape"],
-    sizes: "(max-width: 480px) 100vw, 440px",
+    sizes: "(max-width: 600px) 100vw, 560px",
     maxWidth: 780,
+  },
+  /** Square profile and explore grid tile. */
+  tile: {
+    shapes: ["portrait", "landscape"],
+    sizes: "(max-width: 700px) 33vw, 260px",
+    maxWidth: 342,
   },
   /** Grid and search results. */
   card: { shapes: ["portrait"], sizes: "(max-width: 700px) 34vw, 200px", maxWidth: 342 },
@@ -89,6 +95,15 @@ export function entityImages(entity: Entity | undefined): ImageSource[] {
   if (entity.poster) images.push({ path: entity.poster, role });
   if (entity.backdrop) images.push({ path: entity.backdrop, role: "backdrop" });
   return images;
+}
+
+// Post media carries its own role; galleries hand one image at a time to a slot.
+export function mediaImages(
+  media: { type: string; role?: string; path?: string; thumb?: string } | undefined,
+): ImageSource[] {
+  if (!media) return [];
+  if (media.type === "video") return media.thumb ? [{ path: media.thumb, role: "backdrop" }] : [];
+  return media.path && media.role ? [{ path: media.path, role: media.role as ImageRole }] : [];
 }
 
 export type ResolvedImage = { src: string; srcSet?: string; sizes?: string };

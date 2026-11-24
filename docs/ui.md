@@ -4,26 +4,21 @@ Read this before changing browser UI. React and Mantine 9.7.3 are the only UI
 framework and design system. Use the [official component documentation](https://mantine.dev/)
 and the installed package types before implementing an unfamiliar interaction.
 
-## Screen inventory and migration boundaries
+## Screen inventory
 
-| Area                   | Routes / interactions                                                                                  | Mantine composition                                                      |
-| ---------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| Shell and route states | Every authenticated route, restoration, previews, errors, 404                                          | AppShell, Container, NavLink, Burger, Skeleton, Alert                    |
-| Sign-in                | `/auth`, availability, errors, return destination                                                      | Paper, Stack, Google branded action                                      |
-| Discovery              | `/`, virtual feed, genre/type/sort filters, advanced numeric/date/provider filters, saved feeds        | Card, SegmentedControl, NativeSelect, Checkbox, Drawer, Accordion, Modal |
-| Search                 | `/search?q=…`, titles, people, members, public lists                                                   | TextInput, SimpleGrid, NavLink                                           |
-| Catalog detail         | `/title/$id`: movie, TV, person, season, episode; credits, metadata, providers, relations              | Grid, Stack, Badge, Tabs, semantic definition list                       |
-| Lists                  | `/lists`, owned/saved/explore tabs, create/edit                                                        | Tabs, Card, SimpleGrid, Drawer                                           |
-| List detail            | `/lists/$listId`, search, add/remove, item moves/drag, copies, follows, members/invitations            | Grid, Paper, ActionIcon, TextInput, Drawer, NavLink                      |
-| Activity               | `/activity`, updates, accept/decline invitations                                                       | Stack, Avatar, Anchor, Button                                            |
-| Profiles               | `/profile`, `/profile/$userId`, sentiment/seen/lists/feeds tabs, edits, follows, sign-out, attribution | Avatar, Tabs, SimpleGrid, Drawer                                         |
-| Shared feedback        | Title tags, add-to-list picker and inline creation, notices                                            | Button, Drawer, NavLink, Notifications                                   |
+| Area             | Routes / interactions                                                                    | Mantine composition                                        |
+| ---------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Shell            | Every route; desktop sidebar, mobile bottom tab bar, skip link, 404                      | AppShell, NavLink, UnstyledButton, Avatar                  |
+| Feeds            | `/` (For You, `?topic=`), `/following`, `/watch?account=&tab=&start=` / `?feed=explore`  | Swiper (vertical), Overlay, SegmentedControl, Chip, Drawer |
+| Posts            | Slide media (image, gallery, video tap-to-play, text), action rail, caption, comments    | Image, AspectRatio, ActionIcon, Spoiler, Badge, Drawer     |
+| Explore          | `/explore?q=&topic=`, account search results, 3-column post grid with infinite loading   | TextInput, SimpleGrid, AspectRatio, Skeleton               |
+| Account profiles | `/account/$id` for movies, series, people and members; follow, edit profile, sign out    | Avatar, Tabs, SimpleGrid, ScrollArea, Spoiler, Drawer      |
+| Single post      | `/post/$id`: media, caption, follow, actions, comments                                   | Grid, Paper, TextInput                                     |
+| Create           | `/create`: caption, tag a title/person, attach its artwork                               | Textarea, TextInput, Checkbox, SimpleGrid                  |
+| Sign-in          | `/auth`, `/me` when signed out, and the sign-in prompt opened by any visitor interaction | Modal, Paper, Stack, Google branded action                 |
 
-There are no separate settings or admin screens in this repository. The migration
-boundary is the browser presentation layer: TanStack Router routes, canonical DB
-collections, optimistic command IDs, API/domain behavior and backend permissions
-remain authoritative. Tailwind, Radix wrappers, CVA, clsx and tailwind-merge were
-removed along with the old global stylesheet.
+All routes are public. TanStack Router routes, canonical DB collections, optimistic command IDs,
+API/domain behavior and backend permissions remain authoritative.
 
 ## Start here
 
@@ -37,13 +32,13 @@ removed along with the old global stylesheet.
   Do not add feature themes, custom palettes or token systems.
 - `src/client/providers.tsx` is the only provider configuration. `main.tsx` imports
   Mantine package CSS once. Every rendered entry point must use `Providers`.
-- `components/navigation.tsx` owns `AppShell`, desktop navigation, the mobile
-  navigation toggle and mobile footer. Route paths and authentication are unchanged.
+- `components/shell.tsx` owns `AppShell`, the desktop sidebar and the mobile bottom
+  tab bar (For You, Following, Explore, Post, Profile).
   The brand mark is 🍿, decorative beside MovieFinder. `public/icon.svg` uses
   the same emoji for the favicon.
-- `AppShell.Main` contains one `Container`. A route starts with `Stack gap="lg"`
-  and `PageHeading` (one h1 and optional actions). Use plain app labels: Discover,
-  Search, Lists, Activity, Profile. No slogans, editorial eyebrows or promotional copy.
+- Feed routes fill `AppShell.Main` edge to edge (`feedHeight` subtracts the mobile tab
+  bar); other routes use a `Container`. Every route has one h1. Use plain app labels:
+  For You, Following, Explore, Post, Profile. No slogans or promotional copy.
 - Artwork is the visual focus. Title cards frame reserved poster and metadata
   slots in Mantine Card; dark Paper surfaces and divided section headings group
   secondary content. Bright static film strips, popcorn and cinema stickers,
@@ -108,68 +103,27 @@ narrow-screen strategy. Do not use a disabled control without explaining its sta
 Treat loading, empty, error and complete data as states of the same fixed geometry.
 Do not insert async feedback above content or allow fetched text to resize controls.
 
-- Native page scrollbar space is permanent. Mantine scroll areas use `type="always"`,
-  `scrollbars="y"` and `offsetScrollbars="y"` centrally. Never use `auto`, `hover`,
-  `scroll` or dynamic `offsetScrollbars="present"` for application scroll areas.
-- Modal/Drawer use the same persistent scroll area. Their supported
-  `removeScrollProps.removeScrollBar=false` retains the page gutter while keeping
-  Mantine's wheel/touch isolation, focus trap and Escape handling. AppShell does
-  not add a second scrollbar-width compensation. Modals are top anchored.
-- Notifications use Mantine's stacked layout, top anchored below the AppShell
-  header, with no height/entry transitions. Keep Mantine's queue, close, focus,
-  hover and touch behavior; do not build a separate toast layout or queue.
-- Use `DataSection` for asynchronous collections. Its heading and scroll viewport
-  reserve space before data arrives. Search buckets and detail sections stay
-  mounted; missing results have an explicit empty state inside the same frame.
-  Keep scrolling regions keyboard accessible and label them through the composition.
-- Discovery's empty/error state occupies the same 40rem as the feed. Coverage
-  notices follow the feed and cannot displace it. Toolbar and counter widths are fixed.
-- `DetailHero` is shared by previews and hydrated detail views. Poster, two-line
-  title, facts, genres, synopsis, actions and links keep the same slots. Detail
-  section geometry is determined by the canonical route kind, not optional data.
-  Facts and genre links use independent grid slots. Votes, original title and
-  tagline live in the fixed metadata grid; late copy cannot push the synopsis.
-  Metadata rows retain their slots with explicit unavailable values. Poster
-  fallbacks say "No image"; the neighboring heading supplies the title.
-  `DetailStatus` shares one compact feedback/retry slot between preview and full
-  views. Error actions must fit inside this slot on small screens.
-- `DataSection` keeps the same bordered surface and mounted scroll viewport for
-  skeletons, data and empty states. Person detail previews also reserve filmography
-  tabs and biography geometry before the person record arrives. Person facts show
-  department and available life dates/place in fixed cells, with a 14rem biography
-  viewport; title pages keep separate facts/genre slots and a 10rem synopsis.
-- Profiles share `ProfileHeader` between route preview and full view. Biography,
-  name, statistics, actions and tab content have reserved geometry. Navigation
-  labels truncate instead of resizing the shell when an account name arrives.
-- Search assigns UI slots by canonical entity ID. Late provider batches append
-  without moving existing cards; **Refresh order** applies current provider ranking.
-  Activity follows the same rule; **Show latest** applies the latest time ordering.
-  These actions are enabled only when incoming data changes the ordering.
-  `ActivityCaption` gives actor names and actions separate fixed lines in activity
-  and list history; late or edited names cannot displace the action or timestamp.
-  `useStableOrder` retains IDs only, never copies of server entities.
-- Title/list cards reserve artwork, two title lines, metadata and badge space.
-  Each status badge has its own slot, so Seen and sentiment can arrive independently.
-  Catalog card badges use full-width stacked slots so ratings stay readable in
-  narrow multi-column grids.
-  Changing counters use fixed, left-aligned monospace slots; never center a
-  changing number inside a label whose intrinsic width can resize.
-  List pickers, title pickers, list entries and collaboration panels own bounded
-  scroll frames so late rows cannot push another control out from under the pointer.
-  List Save/Copy actions precede permission-dependent actions. Do not insert late
-  owner/editor actions ahead of existing controls. Changing fixed-width action
-  labels are left aligned so their icons and text stay anchored.
+- Native page scrollbar space is permanent. Mantine scroll areas use `type="always"`
+  centrally. Never use `auto`, `hover`, `scroll`, `never` or dynamic
+  `offsetScrollbars="present"`.
+- Modal/Drawer keep the page gutter (`removeScrollProps.removeScrollBar=false`).
+  Notifications are stacked, top anchored and untransitioned.
+- Feeds reserve the full slide before posts arrive; the trailing slide is a skeleton,
+  an error with retry, an empty state or "all caught up". Feed ordering is append-only.
+  Media frames never resize: images use `fit="contain"` in the slide and `AspectRatio`
+  in grids; counters use fixed-width monospace slots.
+- Profiles reserve the cover, avatar, one-line name and handle (non-breaking space
+  placeholders), stats, a single horizontally scrolling facts/genre row and a fixed
+  overview block that fits the collapsed text and its "more" control. Tab panels show
+  a 3×3 skeleton grid until the account read arrives.
+- Explore and profile grids append tiles below existing ones; skeleton tiles share the
+  same aspect ratio.
 - Read existing canonical collection rows while live-query subscriptions attach;
-  never flash a known list empty or copy server entities into component caches.
-- Preserve image aspect ratios on success, failure and missing artwork. Use system
-  fonts and stable text slots; do not introduce font swaps or animated dimensions.
+  never flash known content empty or copy server entities into component caches.
 
-Run `bun run test:e2e layout-stability.spec.ts` for delayed hydration, live metadata,
-artwork and badges, native classic scrollbars, modal/drawer changes and exact
-geometry checks, independent status updates, late permissions, incoming activity,
-actor-name changes, retry failures and notification appearance/disappearance.
-These tests reject every layout-shift event, including tiny shifts
-and shifts occurring just after user input; do not round them or add a tolerance.
+Run `bun run test:e2e layout-stability.spec.ts`. It delays feed and profile reads and
+rejects every layout-shift event, including tiny shifts and those just after input; do
+not round them or add a tolerance.
 
 ## Styling policy and exceptions
 
@@ -178,7 +132,7 @@ CSS modules, inline `style`, `styles`, `classNames`, or selectors for Mantine in
 Use Mantine props and defaults. New CSS requires a concrete Mantine limitation
 recorded here and a narrow exception in the architecture check.
 
-`src/client/interactions.css` contains only four functional exceptions:
+`src/client/interactions.css` contains only three functional exceptions:
 
 - The browser viewport has no Mantine component. Its root always uses
   `overflow-y: scroll` and `scrollbar-gutter: stable`; do not change either.
@@ -194,14 +148,16 @@ recorded here and a narrow exception in the architecture check.
   Mantine classes, remove its hit area, or suppress telemetry entries.
   Reverify this exception when upgrading Mantine.
 
-- Pointer-based list reordering requires `touch-action: none` on its handle.
-  The rest of the row remains scrollable; accessible arrow actions remain available.
 - Mantine `VisuallyHidden` has no reveal-on-focus API. The skip link is clipped
   until focus and layered above the fixed shell. Focus styles come from Mantine.
 
-Swiper is retained for virtual vertical gesture navigation, which Mantine does
-not provide. Its viewport uses a Mantine `Box` size prop; all slide content and
-actions use Mantine.
+Swiper is retained for virtual vertical feeds and horizontal galleries, which
+Mantine does not provide. Its viewport uses a Mantine `Box` size prop; all slide
+content and actions use Mantine. A Swiper root creates its own stacking context
+(`z-index: 1`), so anything layered over a feed or gallery (feed header, slide
+caption and action rail, watch back button) uses Mantine `Overlay` with its
+`zIndex` prop and explicit insets instead of a plain positioned `Box`.
+Horizontal topic chips sit in a `ScrollArea` with `scrollbars="x"`.
 
 The official Google sign-in bitmap remains unmodified inside `UnstyledButton`.
 It is a narrow provider-brand requirement, not a new application button primitive.

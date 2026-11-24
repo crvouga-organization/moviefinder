@@ -30,6 +30,24 @@ export const array = (v: unknown): Record<string, unknown>[] =>
   Array.isArray(v) ? v.map(record) : [];
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+// The provider's alternative artwork, bounded per role. Galleries are built from these.
+function imageSets(value: unknown) {
+  const images = record(value);
+  const pick = (list: unknown) =>
+    array(list)
+      .filter((image) => str(image.file_path))
+      .slice(0, 12)
+      .map((image) => ({
+        path: str(image.file_path),
+        aspect: num(image.aspect_ratio) || undefined,
+      }));
+  return {
+    backdrops: pick(images.backdrops),
+    posters: pick(images.posters),
+    profiles: pick(images.profiles),
+    stills: pick(images.stills),
+  };
+}
 export function kindFor(id: string): Kind {
   return id.includes(":episode:")
     ? "episode"
@@ -266,6 +284,7 @@ export function normalize(id: string, payload: unknown, version = 1): Entity[] {
       castIds: array(credits.cast).map((p) => num(p.id)),
       crewIds: array(credits.crew).map((p) => num(p.id)),
       relations: relationGroups,
+      images: imageSets(p.images),
       videos: array(record(p.videos).results)
         .filter((v) => v.site === "YouTube")
         .map((v) => ({ name: v.name, key: v.key, type: v.type })),

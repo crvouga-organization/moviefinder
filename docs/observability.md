@@ -103,34 +103,23 @@ bun run test:observability   # actual Vite client → authenticated API → isol
 bun run perf --keep          # synthetic catalog, real dev client, 4x CPU throttle; retains diagnostics
 MOVIEFINDER_TELEMETRY_DIR=.local/perf-telemetry bun run telemetry bottlenecks
 bun run perf --throttle 1
-bun run perf --seed 2000 --lists 20
+bun run perf --seed 2000
 bun run perf --profile       # CPU self time per function
 ```
 
 The observability browser suite checks desktop/mobile navigation, commands, query-value redaction,
-immediate cold destination paint with API responses blocked, visible-data timing, cached artwork
-starting before a held detail response, trace correlation through SQL and a delayed fixture provider, bounded uploads, preload completion/cancellation, recovery after a
-failed upload, persisted diagnostics and CLI output. It creates temporary embedded PostgreSQL and
+immediate cold profile paint with its API response held, visible-data timing, trace correlation
+from the route's read through SQL, the sync worker and a delayed fixture provider, bounded uploads,
+recovery after a failed upload, persisted diagnostics and CLI output. It creates temporary embedded PostgreSQL and
 removes its database/recordings afterwards; it never uses `DATABASE_URL` or your development data.
 Normal `bun run test:e2e` exercises the production build without browser telemetry.
 
 The performance harness creates another isolated embedded database and synthetic catalog, then
-registers, scrolls, tags, opens cold/prepared people and series, fills lists and visits each screen.
-It measures primary link navigation from the initial pointer press before browsing and again after
-the client collections have grown, retaining the same document and client DB for the latter pass.
-The press is captured before the app's input handlers, so preparation cannot hide outside the
-measurement; person-link measurements use the same starting point.
-It makes no provider network requests. Run it without concurrent browser suites or source edits,
-since Vite reloads invalidate timings. The harness reports press-to-destination paint opportunity
-separately from press-to-filmography. Compare background preparation, request waits, SQL/provider
-work, image waits, long tasks and React commits. Synthetic timings help reproduce problems but do
-not establish a live-provider latency guarantee.
-
-`bun run perf --drawer --profile` focuses on Add to list: it opens the drawer with an empty
-account and with saved lists, types into the create-list form, checks rendering opportunities,
-and closes/reopens it three times in each state. A native browser dialog fails the run because
-it blocks the page. The printed cycle duration includes simulated typing and browser automation;
-the separately reported frame timing measures the next rendering opportunity while editing.
+scrolls For You as a visitor, signs in, swipes and likes, opens movie/series/person profiles and
+every tab, plays a profile grid as a feed, scrolls Explore and searches, and opens Following.
+Each step prints its duration. It makes no provider network requests. Run it without concurrent
+browser suites or source edits, since Vite reloads invalidate timings. Synthetic timings help
+reproduce problems but do not establish a live-provider latency guarantee.
 
 ## Adding instrumentation
 
@@ -140,11 +129,7 @@ global request context to label concurrent operations. Server: `record`, `timed`
 `background` from `src/server/telemetry.ts`. New fields/static labels must be added intentionally to
 the shared privacy allowlist and covered by appropriate tests.
 
-`bun run perf --layout --seed 80 --titles 120 --lists 3 --keep` is a focused cold
-search/layout reproduction. It records exact shift values and affected element
-geometry under 4x CPU throttling. Its diagnostic output contains only route
-templates, static component classes/tags and numeric rectangles; never add text,
-DOM IDs, URLs, input values or user fields. Application layout telemetry now retains
-the browser's raw shift value so microshifts are not rounded to zero.
-Use `--layout-all` instead of `--layout` to collect the same affected-element
-geometry during the full browsing/list/session workload.
+`bun run perf --layout --seed 80 --titles 120 --keep` records exact layout-shift values and
+affected element geometry during the session. Its diagnostic output contains only route
+templates, static component classes/tags and numeric rectangles; never add text, DOM IDs, URLs,
+input values or user fields.

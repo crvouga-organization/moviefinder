@@ -20,74 +20,61 @@ test("local browsing produces private, correlated browser → API → SQL → wo
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="30"><rect width="20" height="30" fill="blue"/></svg>',
     }),
   );
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/auth/);
+  await page.goto("/me");
   await completeGoogleSignIn(page, { name: `canary-name-${suffix}`, email });
   await setTestUsername(page, `canary-name-${suffix}`, `canary_${suffix}`);
-  await expect(page.locator(".swiper-slide-active .slide-title h2")).toBeVisible({
-    timeout: 15000,
-  });
-  await page
-    .locator(".swiper-slide-active")
-    .getByRole("button", { name: "Like", exact: true })
-    .click();
-  await expect(
-    page.locator(".swiper-slide-active").getByRole("button", { name: "Like", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
-  // A unique cold destination per browser project, with speculation disabled for this link.
-  await page.evaluate(
-    async (id) => {
-      const { router } = await import(/* @vite-ignore */ String("/src/client/app.tsx"));
-      const a = document.createElement("a");
-      a.href = `/title/${encodeURIComponent(id)}`;
-      a.textContent = "Open cold person";
-      a.id = "trace-destination";
-      a.setAttribute("data-no-preload", "");
-      a.style.cssText =
-        "position:fixed;top:200px;right:16px;z-index:2147483647;padding:16px;background:white;color:black";
-      a.addEventListener("click", (event) => {
-        event.preventDefault();
-        void router.navigate({ to: "/title/$id", params: { id } });
-      });
-      document.body.append(a);
-    },
-    `tmdb:person:${parseInt(suffix, 16)}`,
+  await page.goto("/");
+  const slide = page.locator(".swiper-slide-active article").first();
+  await expect(slide).toBeVisible({ timeout: 15000 });
+  await slide.getByRole("button", { name: "Like", exact: true }).click();
+  await expect(slide.getByRole("button", { name: "Unlike", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
   );
+  // A unique cold account per browser project, reached by an in-app link.
+  const cold = `tmdb:person:${parseInt(suffix, 16)}`;
+  await page.evaluate(async (id) => {
+    const { router } = await import(/* @vite-ignore */ String("/src/client/app.tsx"));
+    const a = document.createElement("a");
+    a.href = `/account/${encodeURIComponent(id)}`;
+    a.textContent = "Open cold person";
+    a.id = "trace-destination";
+    a.style.cssText =
+      "position:fixed;top:200px;right:16px;z-index:2147483647;padding:16px;background:white;color:black";
+    a.addEventListener("click", (event) => {
+      event.preventDefault();
+      void router.navigate({ to: "/account/$id", params: { id } });
+    });
+    document.body.append(a);
+  }, cold);
   let release!: () => void;
   const blocked = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route("**/api/title/*", async (route) => {
+  await page.route("**/api/accounts/*", async (route) => {
     await blocked;
     await route.continue().catch(() => {});
   });
   try {
     await page.locator("#trace-destination").click();
-    await expect(page.locator(".detail-page")).toHaveAttribute(
-      "data-title-id",
-      `tmdb:person:${parseInt(suffix, 16)}`,
-      { timeout: 500 },
-    );
-    await expect(page.locator(".detail-skeleton")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Credits" })).toBeVisible({ timeout: 1000 });
     await expect
       .poll(() =>
-        page.evaluate(() => {
-          const events = (
+        page.evaluate(() =>
+          (
             window as unknown as {
               __moviefinderTelemetry: { events: { kind: string; name: string; path?: string }[] };
             }
-          ).__moviefinderTelemetry.events;
-          return events.some(
-            (e) => e.kind === "navigation" && e.name === "paint" && e.path === "/title/:id",
-          );
-        }),
+          ).__moviefinderTelemetry.events.some(
+            (e) => e.kind === "navigation" && e.name === "paint" && e.path === "/account/:id",
+          ),
+        ),
       )
       .toBe(true);
   } finally {
     release();
   }
-  await expect(page.locator(".detail-intro h1")).toHaveText("Edward Norton");
-  await expect(page.locator(".detail-page")).toHaveAttribute("data-content-ready", "true");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Edward Norton");
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -101,7 +88,6 @@ test("local browsing produces private, correlated browser → API → SQL → wo
       ),
     )
     .toBe(true);
-  await expect(page.locator(".detail-hero img")).toHaveJSProperty("complete", true);
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -115,61 +101,9 @@ test("local browsing produces private, correlated browser → API → SQL → wo
     .toBe(true);
   await page.evaluate(async (q) => {
     const { router } = await import(/* @vite-ignore */ String("/src/client/app.tsx"));
-    await router.navigate({ to: "/search", search: { q } });
+    await router.navigate({ to: "/explore", search: { q } });
   }, query);
-  await expect(page.getByRole("textbox", { name: /Search/i }).first()).toBeVisible();
-  await page.evaluate(async (q) => {
-    const { loadSocial, loadEntity } = await import(
-      /* @vite-ignore */ String("/src/client/state.ts")
-    );
-    const controller = new AbortController();
-    await loadSocial("search", `preload-${q}`, undefined, controller.signal, true);
-    await loadSocial("search", `preload-${q}`, undefined, controller.signal, false);
-    const cancelled = new AbortController();
-    const pending = loadEntity("tmdb:person:999999999", cancelled.signal, true, true);
-    cancelled.abort();
-    await pending.catch(() => {});
-  }, query);
-  // Cached artwork must start while its destination's detail read is still held.
-  let releaseArtworkRead!: () => void;
-  const artworkRead = new Promise<void>((resolve) => {
-    releaseArtworkRead = resolve;
-  });
-  await page.route("**/api/title/*999999998*", async (route) => {
-    await artworkRead;
-    await route.continue().catch(() => {});
-  });
-  const earlyImage = page.waitForRequest((request) =>
-    request.url().includes("/early-artwork-canary.jpg"),
-  );
-  try {
-    await page.evaluate(async () => {
-      const { merge, authClient } = await import(/* @vite-ignore */ String("/src/client/state.ts"));
-      const { prepareScreen } = await import(
-        /* @vite-ignore */ String("/src/client/preloading.ts")
-      );
-      await merge([
-        {
-          id: "tmdb:person:999999998",
-          kind: "person",
-          version: 0,
-          title: "Cached artwork",
-          poster: "/early-artwork-canary.jpg",
-          data: { summary: true },
-        },
-      ]);
-      const session = await authClient.getSession();
-      void prepareScreen(
-        "/title/tmdb%3Aperson%3A999999998",
-        session.data!.user.id,
-        new AbortController().signal,
-        true,
-      ).catch(() => {});
-    });
-    await earlyImage;
-  } finally {
-    releaseArtworkRead();
-  }
+  await expect(page.getByRole("searchbox", { name: "Search accounts" })).toBeVisible();
   let failOnce = true;
   let samplesDelivered = 0;
   await page.route("**/api/telemetry", async (route) => {
@@ -221,7 +155,7 @@ test("local browsing produces private, correlated browser → API → SQL → wo
     .poll(
       async () =>
         traces(await events()).filter(
-          (trace) => trace.path === "/title/:id" && trace.resolvedMs !== undefined,
+          (trace) => trace.path === "/account/:id" && trace.resolvedMs !== undefined,
         ).length,
     )
     .toBeGreaterThan(0);
@@ -234,7 +168,10 @@ test("local browsing produces private, correlated browser → API → SQL → wo
     ),
   ).toBeGreaterThan(0);
   const rows = await events();
-  const detail = traces(rows).findLast((trace) => trace.path === "/title/:id");
+  // The cold person visit, not the profile redirect after sign-in.
+  const detail = traces(rows).findLast(
+    (trace) => trace.path === "/account/:id" && trace.kinds.includes("upstream"),
+  );
   expect(detail).toBeDefined();
   expect(detail!.resolvedMs).toBeGreaterThan(0);
   expect(Number(detail!.contentMs)).toBeGreaterThan(Number(detail!.paintMs));
@@ -249,16 +186,16 @@ test("local browsing produces private, correlated browser → API → SQL → wo
     "upstream",
     "parse",
     "merge",
-    "image",
   ]) {
     expect(detail!.kinds.includes(kind), `detail trace includes ${kind}`).toBe(true);
   }
   const requestId = detail!.stages.find(
-    (stage) => stage.kind === "fetch" && stage.name === "GET /api/title/:id",
+    (stage) => stage.kind === "fetch" && stage.name === "GET /api/accounts/:id",
   )?.requestId;
   expect(requestId).toBeDefined();
   const request = rows.find((row) => row.kind === "fetch" && row.requestId === requestId);
-  expect(request?.traceId).not.toBe(detail!.traceId);
+  // A route's own read joins its navigation trace directly.
+  expect(request?.traceId).toBe(detail!.traceId);
   expect(rows.some((row) => row.kind === "http" && row.requestId === request?.requestId)).toBe(
     true,
   );
@@ -271,8 +208,6 @@ test("local browsing produces private, correlated browser → API → SQL → wo
     provider: true,
     navigation: true,
   });
-  expect(report.preload.completed).toBeGreaterThan(0);
-  expect(report.preload.cancelled).toBeGreaterThan(0);
   const raw = await readFile(join(directory, "events.ndjson"), "utf8");
   for (const canary of [email, query, `canary-name-${suffix}`, `canary_${suffix}`])
     expect(raw).not.toContain(canary);

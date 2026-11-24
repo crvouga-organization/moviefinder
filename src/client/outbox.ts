@@ -1,4 +1,5 @@
 import { commandSchema, type Command } from "../shared/contracts";
+// Commands survive a reload until the server confirms them; replays reuse the operation ID.
 export function createOutbox(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">) {
   const key = (userId: string) => `moviefinder:commands:${userId}`;
   function read(userId: string): Command[] {
@@ -30,23 +31,6 @@ export function createOutbox(storage: Pick<Storage, "getItem" | "setItem" | "rem
       write(
         userId,
         read(userId).filter((c) => c.operationId !== id),
-      );
-    },
-    alias(userId: string, from: string, to: string) {
-      if (from === to) return;
-      write(
-        userId,
-        read(userId).map((c) =>
-          c.type === "list.move"
-            ? {
-                ...c,
-                itemId: c.itemId === from ? to : c.itemId,
-                beforeId: c.beforeId === from ? to : c.beforeId,
-              }
-            : c.type === "list.remove"
-              ? { ...c, itemId: c.itemId === from ? to : c.itemId }
-              : c,
-        ),
       );
     },
   };

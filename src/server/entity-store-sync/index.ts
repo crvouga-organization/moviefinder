@@ -25,7 +25,6 @@ export function upstreamParameters(p: FeedParams, page: number, type: "movie" | 
     newest: type === "movie" ? "primary_release_date.desc" : "first_air_date.desc",
     oldest: type === "movie" ? "primary_release_date.asc" : "first_air_date.asc",
     random: "popularity.desc",
-    relevance: "popularity.desc",
     trending: "popularity.desc",
   };
   out.sort_by = sort[p.sort];
@@ -220,11 +219,15 @@ export function createSync(db: Database, tmdb: Tmdb) {
         type === "person"
           ? "combined_credits,external_ids,images"
           : type === "season" || type === "episode"
-            ? "credits,external_ids,videos"
+            ? "credits,external_ids,videos,images"
             : type === "movie"
-              ? "credits,recommendations,similar,external_ids,videos,keywords,watch/providers,release_dates"
-              : "aggregate_credits,recommendations,similar,external_ids,videos,keywords,watch/providers,content_ratings";
-      const payload = await request(path, { append_to_response: append }, abort.signal);
+              ? "credits,recommendations,similar,external_ids,videos,images,keywords,watch/providers,release_dates"
+              : "aggregate_credits,recommendations,similar,external_ids,videos,images,keywords,watch/providers,content_ratings";
+      const payload = await request(
+        path,
+        { append_to_response: append, include_image_language: "en,null" },
+        abort.signal,
+      );
       await db.transaction(async (tx) => {
         await store.ingest(tx, id, payload, "detail");
         await tx

@@ -55,13 +55,7 @@ test("browser UI has one Mantine theme/provider and no parallel styling or primi
     [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{/g)].map((match) =>
       match[1]!.trim(),
     ),
-  ).toEqual([
-    "html",
-    ".stable-scroll-thumb::before",
-    ".list-drag-handle",
-    ".skip-link",
-    ".skip-link:not(:focus)",
-  ]);
+  ).toEqual(["html", ".stable-scroll-thumb::before", ".skip-link", ".skip-link:not(:focus)"]);
   const providers = sources.find(({ path }) => path === "src/client/providers.tsx")!.source;
   expect(providers.match(/<MantineProvider\b/g)).toHaveLength(1);
   expect(sources.find(({ path }) => path === "src/client/main.tsx")!.source).toContain(

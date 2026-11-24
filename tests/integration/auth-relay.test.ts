@@ -188,7 +188,7 @@ describe("shared relay public OIDC code flow", () => {
     const previous = sessionCookie(await callback(await begin()));
     try {
       expect(
-        (await multi.app.request(`${origin}/api/state`, { headers: { Cookie: previous } })).status,
+        (await multi.app.request(`${origin}/api/ready`, { headers: { Cookie: previous } })).status,
       ).toBe(200);
       const a = await begin({}, multi, origin),
         b = await begin({}, multi, extra);
@@ -207,10 +207,10 @@ describe("shared relay public OIDC code flow", () => {
       ]) {
         expect(Boolean(cookie)).toBe(true);
         expect(
-          (await multi.app.request(`${host}/api/state`, { headers: { Cookie: cookie! } })).status,
+          (await multi.app.request(`${host}/api/ready`, { headers: { Cookie: cookie! } })).status,
         ).toBe(200);
         expect(
-          (await multi.app.request(`${host}/api/state`, { headers: { Cookie: other! } })).status,
+          (await multi.app.request(`${host}/api/ready`, { headers: { Cookie: other! } })).status,
         ).toBe(401);
         expect(
           (
@@ -263,11 +263,11 @@ describe("shared relay public OIDC code flow", () => {
         ).status,
       ).toBe(200);
       expect(
-        (await multi.app.request(`${extra}/api/state`, { headers: { Cookie: extraCookie } }))
+        (await multi.app.request(`${extra}/api/ready`, { headers: { Cookie: extraCookie } }))
           .status,
       ).toBe(401);
       expect(
-        (await multi.app.request(`${origin}/api/state`, { headers: { Cookie: primaryCookie } }))
+        (await multi.app.request(`${origin}/api/ready`, { headers: { Cookie: primaryCookie } }))
           .status,
       ).toBe(200);
     } finally {
@@ -296,7 +296,7 @@ describe("shared relay public OIDC code flow", () => {
     expect(response.headers.get("location")).toContain("/lists/fixture?tab=items");
     const cookie = sessionCookie(response);
     expect(Boolean(cookie)).toBe(true);
-    expect((await service.app.request("/api/state", { headers: { Cookie: cookie } })).status).toBe(
+    expect((await service.app.request("/api/ready", { headers: { Cookie: cookie } })).status).toBe(
       200,
     );
     const [row] = await db
@@ -310,7 +310,7 @@ describe("shared relay public OIDC code flow", () => {
     unavailable = true;
     try {
       expect(
-        (await restarted.app.request("/api/state", { headers: { Cookie: cookie } })).status,
+        (await restarted.app.request("/api/ready", { headers: { Cookie: cookie } })).status,
       ).toBe(200);
     } finally {
       unavailable = false;
@@ -406,7 +406,7 @@ describe("shared relay public OIDC code flow", () => {
     const subject = crypto.randomUUID();
     const cookie = sessionCookie(await callback(await begin({ email, sub: subject })));
     expect(Boolean(cookie)).toBe(true);
-    expect((await service.app.request("/api/state", { headers: { Cookie: cookie } })).status).toBe(
+    expect((await service.app.request("/api/ready", { headers: { Cookie: cookie } })).status).toBe(
       200,
     );
     const [claimed] = await db.select().from(user).where(eq(user.email, email));

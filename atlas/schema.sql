@@ -28,7 +28,7 @@ CREATE TABLE moviefinder.collaborator (id text PRIMARY KEY, list_id text NOT NUL
 CREATE UNIQUE INDEX collaborator_list_user_idx ON moviefinder.collaborator(list_id,user_id);
 CREATE TABLE moviefinder.invitation (id text PRIMARY KEY, list_id text NOT NULL REFERENCES moviefinder.list(id) ON DELETE CASCADE, user_id text NOT NULL REFERENCES moviefinder."user"(id), invited_by text NOT NULL REFERENCES moviefinder."user"(id), state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','accepted','declined')), version bigint NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
 CREATE UNIQUE INDEX invitation_list_user_idx ON moviefinder.invitation(list_id,user_id);
-CREATE TABLE moviefinder.follow (id text PRIMARY KEY, user_id text NOT NULL REFERENCES moviefinder."user"(id), target_id text NOT NULL, target_kind text NOT NULL CHECK(target_kind IN ('user','list')), version bigint NOT NULL DEFAULT 1);
+CREATE TABLE moviefinder.follow (id text PRIMARY KEY, user_id text NOT NULL REFERENCES moviefinder."user"(id), target_id text NOT NULL, target_kind text NOT NULL CHECK(target_kind IN ('user','list','movie','tv','person')), version bigint NOT NULL DEFAULT 1);
 CREATE UNIQUE INDEX follow_user_target_idx ON moviefinder.follow(user_id,target_id,target_kind);
 CREATE TABLE moviefinder.saved_feed (id text PRIMARY KEY, user_id text NOT NULL REFERENCES moviefinder."user"(id), title text NOT NULL, params jsonb NOT NULL, version bigint NOT NULL DEFAULT 1);
 CREATE TABLE moviefinder.activity (id text PRIMARY KEY, user_id text NOT NULL REFERENCES moviefinder."user"(id), title text NOT NULL, target_id text NOT NULL, version bigint NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
@@ -37,3 +37,15 @@ CREATE INDEX event_created_idx ON moviefinder.event(created_at);
 CREATE TABLE moviefinder.operation (user_id text NOT NULL REFERENCES moviefinder."user"(id) ON DELETE CASCADE, id text NOT NULL, fingerprint text NOT NULL, result jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,id));
 
 CREATE TABLE moviefinder.sync_checkpoint (id text PRIMARY KEY, payload jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX follow_target_idx ON moviefinder.follow(target_id);
+CREATE TABLE moviefinder.post (id text PRIMARY KEY, author_id text NOT NULL REFERENCES moviefinder."user"(id) ON DELETE CASCADE, body text NOT NULL DEFAULT '', subject_id text, media jsonb NOT NULL DEFAULT '[]', version bigint NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX post_author_idx ON moviefinder.post(author_id,created_at);
+CREATE INDEX post_subject_idx ON moviefinder.post(subject_id,created_at);
+CREATE INDEX post_created_idx ON moviefinder.post(created_at);
+CREATE TABLE moviefinder.post_like (user_id text NOT NULL REFERENCES moviefinder."user"(id) ON DELETE CASCADE, post_id text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY(user_id,post_id));
+CREATE INDEX post_like_post_idx ON moviefinder.post_like(post_id);
+CREATE INDEX post_like_user_created_idx ON moviefinder.post_like(user_id,created_at);
+CREATE TABLE moviefinder.comment (id text PRIMARY KEY, post_id text NOT NULL, user_id text NOT NULL REFERENCES moviefinder."user"(id) ON DELETE CASCADE, body text NOT NULL, version bigint NOT NULL DEFAULT 1, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX comment_post_idx ON moviefinder.comment(post_id,created_at);
+CREATE TABLE moviefinder.post_engagement (post_id text PRIMARY KEY, likes integer NOT NULL DEFAULT 0 CHECK(likes >= 0), comments integer NOT NULL DEFAULT 0 CHECK(comments >= 0), version bigint NOT NULL DEFAULT 1);
+CREATE TABLE moviefinder.account_stat (account_id text PRIMARY KEY, followers integer NOT NULL DEFAULT 0 CHECK(followers >= 0), following integer NOT NULL DEFAULT 0 CHECK(following >= 0), posts integer NOT NULL DEFAULT 0 CHECK(posts >= 0), version bigint NOT NULL DEFAULT 1);

@@ -1,78 +1,37 @@
-import { fieldText } from "../shared/contracts";
-import { desc, eq, inArray, or, sql } from "drizzle-orm";
-import type { Database, Executor } from "./db";
+import { desc, eq, sql } from "drizzle-orm";
+import type { Database } from "./db";
 import * as s from "./db/schema";
-import type { Entity, Kind } from "../shared/contracts";
+import type { Entity } from "../shared/contracts";
+import { userAccount } from "../shared/contracts";
 import { currentCursor } from "./events";
-export function rowEntity(kind: Kind, row: Record<string, unknown>): Entity {
-  const { id, version, ...data } = row;
-  return {
-    id: fieldText(id),
-    kind,
-    version: Number(version ?? (row.updatedAt instanceof Date ? row.updatedAt.getTime() : 1)),
-    title: fieldText(row.title ?? row.name ?? ""),
-    poster: kind === "user" ? fieldText(row.image ?? "") || null : undefined,
-    data: JSON.parse(JSON.stringify(data)) as Record<string, unknown>,
-  };
-}
-export async function socialState(db: Executor, userId: string) {
-  const entities: Entity[] = [];
-  const users = await db
-    .select({
-      id: s.user.id,
-      name: s.user.name,
-      username: s.user.username,
-      image: s.user.image,
-      bio: s.user.bio,
-      updatedAt: s.user.updatedAt,
-    })
-    .from(s.user)
-    .limit(500);
-  entities.push(...users.map((r) => rowEntity("user", r)));
-  const sets = [
-    await db.select().from(s.lists).orderBy(desc(s.lists.updatedAt)).limit(250),
-    await db.select().from(s.items).limit(5000),
-    await db.select().from(s.collaborators).limit(1000),
-    await db.select().from(s.statuses).orderBy(desc(s.statuses.updatedAt)).limit(2000),
-    await db.select().from(s.activities).orderBy(desc(s.activities.createdAt)).limit(250),
-    await db.select().from(s.feeds).where(eq(s.feeds.userId, userId)),
-    await db.select().from(s.follows).where(eq(s.follows.userId, userId)),
-    await db
-      .select()
-      .from(s.invitations)
-      .where(or(eq(s.invitations.userId, userId), eq(s.invitations.invitedBy, userId))),
-  ];
-  const kinds: Kind[] = [
-    "list",
-    "item",
-    "collaborator",
-    "status",
-    "activity",
-    "feed",
-    "follow",
-    "invitation",
-  ];
-  sets.forEach((rows, i) => entities.push(...rows.map((r) => rowEntity(kinds[i]!, r))));
-  return entities;
-}
-export async function snapshot(db: Database, userId: string) {
+import { accountContext, followEntity, likeEntity, publicUser, userEntity } from "./social";
+
+// The viewer's own state: their account, follows and recent likes. Signed-out visitors get an
+// empty snapshot and the public event cursor.
+export async function snapshot(db: Database, userId: string | null) {
   // Repeatable read pairs an internally consistent snapshot with its replay watermark.
   return db.transaction(async (tx) => {
     await tx.execute(sql`set transaction isolation level repeatable read read only`);
     const cursor = await currentCursor(tx);
-    const entities = await socialState(tx, userId);
-    const ids = [
-      ...new Set(
-        entities
-          .filter((e) => e.kind === "item" || e.kind === "status")
-          .map((e) => fieldText(e.data.titleId)),
-      ),
-    ];
-    const rows = ids.length
-      ? await tx.select().from(s.sources).where(inArray(s.sources.id, ids))
-      : [];
-    const { summaryOf } = await import("./entity-store/normalize");
-    for (const r of rows) entities.push(...summaryOf(r.id, r.payload, r.version));
-    return { entities, cursor };
+    const entities: Entity[] = [];
+    if (userId) {
+      const [me] = await tx.select(publicUser).from(s.user).where(eq(s.user.id, userId));
+      if (me) entities.push(userEntity(me));
+      const follows = await tx
+        .select({ targetId: s.follows.targetId, version: s.follows.version })
+        .from(s.follows)
+        .where(eq(s.follows.userId, userId))
+        .limit(2000);
+      entities.push(...follows.map((f) => followEntity(userId, f.targetId, f.version)));
+      const likes = await tx
+        .select({ postId: s.likes.postId, createdAt: s.likes.createdAt })
+        .from(s.likes)
+        .where(eq(s.likes.userId, userId))
+        .orderBy(desc(s.likes.createdAt))
+        .limit(1000);
+      entities.push(...likes.map((l) => likeEntity(userId, l.postId, l.createdAt.getTime())));
+      entities.push(...(await accountContext(tx, [userAccount(userId)], null)));
+    }
+    return { entities, cursor, viewer: userId };
   });
 }

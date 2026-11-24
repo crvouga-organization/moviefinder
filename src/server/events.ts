@@ -30,11 +30,17 @@ export async function currentCursor(db: Executor) {
   const [row] = await db.select({ id: events.id }).from(events).orderBy(desc(events.id)).limit(1);
   return String(row?.id ?? 0);
 }
-export async function replay(db: Database, userId: string, cursor: number) {
+// Public events reach everyone, including signed-out visitors; private ones only their member.
+export async function replay(db: Database, userId: string | null, cursor: number) {
   return db
     .select()
     .from(events)
-    .where(and(gt(events.id, cursor), or(isNull(events.audience), eq(events.audience, userId))))
+    .where(
+      and(
+        gt(events.id, cursor),
+        userId ? or(isNull(events.audience), eq(events.audience, userId)) : isNull(events.audience),
+      ),
+    )
     .orderBy(events.id)
     .limit(100);
 }
