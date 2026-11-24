@@ -8,14 +8,12 @@ export const kinds = [
   "credit",
   "genre",
   "user",
-  "status",
-  "list",
-  "item",
-  "collaborator",
-  "activity",
-  "feed",
+  "post",
+  "comment",
+  "like",
   "follow",
-  "invitation",
+  "engagement",
+  "audience",
   "query",
 ] as const;
 export type Kind = (typeof kinds)[number];
@@ -40,6 +38,71 @@ export const sourceId = z
   .string()
   .regex(/^tmdb:(movie|tv|person):\d+(?::season:\d+(?::episode:\d+)?)?$/);
 export const titleId = z.string().regex(/^tmdb:(movie|tv):\d+$/);
+
+// Every account has a profile and a feed: movies, series, people and members.
+export const catalogAccountId = z.string().regex(/^tmdb:(movie|tv|person):\d+$/);
+export const userAccountId = z.string().regex(/^user:[A-Za-z0-9_-]{1,64}$/);
+export const accountId = z.union([catalogAccountId, userAccountId]);
+export type AccountKind = "movie" | "tv" | "person" | "user";
+export const accountKind = (id: string): AccountKind =>
+  id.startsWith("user:") ? "user" : (id.split(":")[1] as AccountKind);
+export const userAccount = (userId: string) => `user:${userId}`;
+export const userIdOf = (account: string) =>
+  account.startsWith("user:") ? account.slice("user:".length) : undefined;
+
+// Catalog posts are derived from an account's source record: `tmdb:movie:550~poster`.
+// Member posts are stored rows: `post:<uuid>`.
+export const postId = z
+  .string()
+  .max(200)
+  .regex(/^(?:tmdb:(?:movie|tv|person):\d+~[a-z]+(?::[A-Za-z0-9_-]{1,80})?|post:[0-9a-f-]{36})$/);
+export const postAccount = (id: string) => (id.startsWith("post:") ? undefined : id.split("~")[0]);
+
+export const imageRoles = ["poster", "profile", "still", "backdrop"] as const;
+export const imagePath = z.string().regex(/^\/[A-Za-z0-9_-]{1,80}\.(?:jpg|jpeg|png|webp|svg)$/);
+export const postMedia = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("image"),
+    role: z.enum(imageRoles),
+    path: imagePath,
+    // Width / height. Reserves the frame before the artwork arrives.
+    aspect: z.number().positive().max(10),
+    link: accountId.optional(),
+    label: z.string().max(200).optional(),
+  }),
+  z.object({
+    type: z.literal("video"),
+    key: z.string().regex(/^[A-Za-z0-9_-]{6,20}$/),
+    name: z.string().max(200),
+    thumb: imagePath.optional(),
+  }),
+]);
+export type PostMedia = z.infer<typeof postMedia>;
+export type PostFormat = "image" | "gallery" | "video" | "text";
+export type PostData = {
+  author: string;
+  subjects: string[];
+  format: PostFormat;
+  media: PostMedia[];
+  caption: string;
+  at: string | null;
+  origin: "catalog" | "user";
+};
+export const postData = (post: Entity | undefined): PostData | undefined =>
+  post?.kind === "post" ? (post.data as PostData) : undefined;
+
+export const engagementOf = (entity: Entity | undefined) => ({
+  likes: Number(entity?.data.likes ?? 0),
+  comments: Number(entity?.data.comments ?? 0),
+});
+export const audienceOf = (entity: Entity | undefined) => ({
+  followers: Number(entity?.data.followers ?? 0),
+  following: Number(entity?.data.following ?? 0),
+  posts: Number(entity?.data.posts ?? 0),
+});
+export const likeKey = (userId: string, post: string) => `${userId}|${post}`;
+export const followKey = (userId: string, account: string) => `${userId}|${account}`;
+
 const csvNumbers = z.preprocess(
   (v) => (typeof v === "string" ? v.split(",").filter(Boolean).map(Number) : v),
   z
@@ -54,20 +117,12 @@ const optionalNumber = z.preprocess(
 );
 const optionalText = (schema: z.ZodType<string>) =>
   z.preprocess((v) => (v === "" ? undefined : v), schema.optional());
+// Catalog discovery parameters. Feeds use them to ask the provider for the titles behind posts.
 export const feedParams = z
   .object({
     type: z.enum(["movie", "tv", "both"]).default("both"),
     sort: z
-      .enum([
-        "popularity",
-        "rating",
-        "lowest",
-        "newest",
-        "oldest",
-        "trending",
-        "random",
-        "relevance",
-      ])
+      .enum(["popularity", "rating", "lowest", "newest", "oldest", "trending", "random"])
       .default("popularity"),
     genres: csvNumbers,
     excludeGenres: csvNumbers,
@@ -92,10 +147,6 @@ export const feedParams = z
       .string()
       .regex(/^[A-Z]{2}$/)
       .default("US"),
-    seen: z.enum(["all", "seen", "unseen"]).default("all"),
-    sentiment: z.enum(["all", "liked", "meh", "disliked", "unrated"]).default("all"),
-    list: optionalText(z.uuid()),
-    notInList: optionalText(z.uuid()),
     q: z.string().trim().max(200).default(""),
     cursor: z.string().max(600).optional(),
     seed: z.string().max(100).default("discover"),
@@ -122,6 +173,32 @@ export const feedParams = z
     "The popularity range is reversed",
   );
 export type FeedParams = z.infer<typeof feedParams>;
+
+// Feed topics are the chips above For You and Explore.
+export const topics = [
+  { id: "all", label: "All" },
+  { id: "movie", label: "Movies" },
+  { id: "tv", label: "TV" },
+  { id: "28", label: "Action" },
+  { id: "35", label: "Comedy" },
+  { id: "18", label: "Drama" },
+  { id: "27", label: "Horror" },
+  { id: "878", label: "Sci‑fi" },
+  { id: "16", label: "Animation" },
+  { id: "99", label: "Documentary" },
+] as const;
+export const topic = z.enum(topics.map((t) => t.id) as [string, ...string[]]).default("all");
+export const feedKind = z.enum(["foryou", "following", "explore"]);
+export type FeedKind = z.infer<typeof feedKind>;
+export const feedRequest = z.object({
+  feed: feedKind.default("foryou"),
+  topic,
+  cursor: z.string().max(800).optional(),
+});
+export type FeedRequest = z.infer<typeof feedRequest>;
+export const accountTabs = ["posts", "videos", "community", "cast", "related", "credits", "likes"];
+export const accountTab = z.enum(accountTabs as [string, ...string[]]);
+
 export function stableSerialize(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
   if (value && typeof value === "object")
@@ -147,6 +224,10 @@ export type QueryResult = {
   entities: Entity[];
   ids: string[];
   coverage: Coverage;
+  // Event subscriptions whose changes make this read stale.
+  subscriptions?: string[];
+  // Named secondary id lists, such as an account's tabs or a post's comments.
+  views?: Record<string, string[]>;
   included?: { id: string; ids: string[]; coverage: Coverage }[];
 };
 export type EventEnvelope = {
@@ -158,61 +239,25 @@ export type EventEnvelope = {
   removed: { kind: Kind; id: string }[];
   timestamp: string;
 };
-export const sentiment = z.enum(["liked", "meh", "disliked", "unrated"]);
 const meta = { operationId: z.uuid() };
 export const commandSchema = z.discriminatedUnion("type", [
+  z.object({ ...meta, type: z.literal("like"), postId, like: z.boolean() }),
+  z.object({ ...meta, type: z.literal("follow"), accountId, follow: z.boolean() }),
   z.object({
     ...meta,
-    type: z.literal("status"),
-    titleId: titleId,
-    seen: z.boolean().optional(),
-    sentiment: sentiment.optional(),
+    type: z.literal("comment.create"),
+    postId,
+    body: z.string().trim().min(1).max(1000),
   }),
+  z.object({ ...meta, type: z.literal("comment.delete"), commentId: z.uuid() }),
   z.object({
     ...meta,
-    type: z.literal("list.create"),
-    title: z.string().trim().min(1).max(120),
-    description: z.string().max(2000).default(""),
+    type: z.literal("post.create"),
+    body: z.string().trim().max(2000),
+    subjectId: catalogAccountId.optional(),
+    media: z.array(postMedia).max(10).default([]),
   }),
-  z.object({
-    ...meta,
-    type: z.literal("list.edit"),
-    listId: z.uuid(),
-    title: z.string().trim().min(1).max(120),
-    description: z.string().max(2000),
-  }),
-  z.object({ ...meta, type: z.literal("list.add"), listId: z.uuid(), titleId: sourceId }),
-  z.object({ ...meta, type: z.literal("list.remove"), listId: z.uuid(), itemId: z.uuid() }),
-  z.object({
-    ...meta,
-    type: z.literal("list.move"),
-    listId: z.uuid(),
-    itemId: z.uuid(),
-    beforeId: z.uuid().nullable(),
-  }),
-  z.object({
-    ...meta,
-    type: z.literal("list.invite"),
-    listId: z.uuid(),
-    userId: z.string().min(1),
-  }),
-  z.object({ ...meta, type: z.literal("invitation.accept"), invitationId: z.uuid() }),
-  z.object({ ...meta, type: z.literal("invitation.decline"), invitationId: z.uuid() }),
-  z.object({
-    ...meta,
-    type: z.literal("list.member.remove"),
-    listId: z.uuid(),
-    userId: z.string(),
-  }),
-  z.object({ ...meta, type: z.literal("list.follow"), listId: z.uuid(), follow: z.boolean() }),
-  z.object({ ...meta, type: z.literal("list.copy"), listId: z.uuid() }),
-  z.object({ ...meta, type: z.literal("user.follow"), userId: z.string(), follow: z.boolean() }),
-  z.object({
-    ...meta,
-    type: z.literal("feed.save"),
-    title: z.string().min(1).max(100),
-    params: feedParams,
-  }),
+  z.object({ ...meta, type: z.literal("post.delete"), postId: z.string().regex(/^post:/) }),
   z.object({
     ...meta,
     type: z.literal("profile"),
@@ -226,8 +271,6 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
-export const canEdit = (role: string | undefined) => role === "owner" || role === "editor";
-export const canManage = (role: string | undefined) => role === "owner";
 export function safeReturnTo(value: string | null | undefined) {
   return value?.startsWith("/") &&
     !value.startsWith("//") &&

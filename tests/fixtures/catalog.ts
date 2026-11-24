@@ -4,6 +4,7 @@ export const movie = {
   overview: "An insomniac office worker and a soap maker form an underground fight club.",
   release_date: "1999-10-15",
   poster_path: "/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg",
+  backdrop_path: "/hZkgoQYus5vegHoetLkCJzb17zJ.jpg",
   genre_ids: [18, 53],
   popularity: 95,
   vote_average: 8.4,
@@ -39,6 +40,27 @@ export const movieDetail = {
         credit_id: "actor-one",
         profile_path: null,
       },
+      {
+        id: 287,
+        name: "Brad Pitt",
+        character: "Tyler Durden",
+        credit_id: "actor-two",
+        profile_path: "/brad.jpg",
+      },
+      {
+        id: 1283,
+        name: "Helena Bonham Carter",
+        character: "Marla Singer",
+        credit_id: "actor-three",
+        profile_path: "/helena.jpg",
+      },
+      {
+        id: 7470,
+        name: "Meat Loaf",
+        character: "Robert Paulson",
+        credit_id: "actor-four",
+        profile_path: "/meat.jpg",
+      },
     ],
     crew: [
       {
@@ -53,7 +75,18 @@ export const movieDetail = {
   recommendations: {
     results: [{ id: 680, title: "Pulp Fiction", media_type: "movie", release_date: "1994-09-10" }],
   },
-  videos: { results: [{ key: "test-trailer", name: "Trailer", site: "YouTube" }] },
+  videos: { results: [{ key: "test-trailer", name: "Trailer", site: "YouTube", type: "Trailer" }] },
+  images: {
+    backdrops: [
+      { file_path: "/still-one.jpg", aspect_ratio: 1.778 },
+      { file_path: "/still-two.jpg", aspect_ratio: 1.778 },
+    ],
+    posters: [
+      { file_path: "/poster-one.jpg", aspect_ratio: 0.667 },
+      { file_path: "/poster-two.jpg", aspect_ratio: 0.667 },
+      { file_path: "/poster-three.jpg", aspect_ratio: 0.667 },
+    ],
+  },
 };
 export const fixtures = Array.from({ length: 12 }, (_, i) => ({
   ...movie,
@@ -73,6 +106,27 @@ export async function fixtureUpstream(path: string, params: Record<string, strin
         popularity: m.popularity - (Number(params.page ?? 1) - 1) * 12,
       })),
     };
+  if (path.startsWith("trending/all"))
+    return {
+      page: Number(params.page ?? 1),
+      total_pages: 2,
+      results: [
+        ...fixtures.slice(0, 6).map((m) => ({
+          ...m,
+          id: m.id + (Number(params.page ?? 1) - 1) * 12,
+          title: `Test story ${m.id + (Number(params.page ?? 1) - 1) * 12}`,
+          media_type: "movie",
+        })),
+        { ...television, media_type: "tv" },
+        {
+          id: 819,
+          name: "Edward Norton",
+          media_type: "person",
+          profile_path: "/norton.jpg",
+          popularity: 50,
+        },
+      ],
+    };
   if (path.startsWith("discover/tv") || path.startsWith("trending/tv"))
     return { page: 1, total_pages: 1, results: [television] };
   if (path.startsWith("search/"))
@@ -90,6 +144,8 @@ export async function fixtureUpstream(path: string, params: Record<string, strin
       id: Number(path.split("/")[1]),
       name: "Edward Norton",
       biography: "An actor.",
+      profile_path: "/norton.jpg",
+      images: { profiles: [{ file_path: "/norton-1.jpg" }, { file_path: "/norton-2.jpg" }] },
       combined_credits: { cast: [{ ...movie, media_type: "movie" }] },
     };
   if (path.includes("/episode/"))

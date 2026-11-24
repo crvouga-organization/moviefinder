@@ -1,105 +1,26 @@
 # Query system
 
-`defineQuery` separates parameter validation, cache reading, background scheduling, and normalization. Cache execution reads PostgreSQL immediately and schedules durable work. HTTP reads can wait for bounded hydration or explicitly requested readiness; route changes never await those reads. Request cancellation prevents publishing an abandoned request response. Shared durable hydration is not canceled merely because one viewer navigates away.
+`defineQuery` separates parameter validation, cache reading, background scheduling, and normalization. Cache execution reads PostgreSQL immediately and schedules durable work. Request cancellation prevents publishing an abandoned response. Shared durable hydration is not canceled merely because one viewer navigates away.
 
-Discovery parameters compose media type, included/excluded genres, dates/years, runtime, language, country, rating/votes/popularity, cast/crew, keywords, providers/region, viewing status, sentiment, list membership, query text, and sort order. Zod validates HTTP inputs. Parameter serialization sorts object keys. Cursors bind their page to the filter identity; a cursor from a different feed is rejected.
+## Catalog queries
 
-Provider-supported constraints are translated to TMDB discovery parameters. Viewing status, sentiment, membership, current-session exclusions, and popularity bounds are applied against available local state. The protocol reports unsupported metadata combinations, including TMDB's lack of TV cast/crew discovery constraints. No source-coverage claim is made from a partial local fallback.
+`src/server/queries` owns two definitions. **Discover** reads one provider page (trending, popular-by-topic or search) from `query_cache`, schedules missing or stale pages on the durable sync lane, and returns the cached source rows. **Entity** reads one account's source row and schedules hydration (detail plus images and videos) when it is missing, a summary, or stale, waiting a bounded time for a cold row. Feed parameters are validated with Zod, serialized with sorted keys, and cursors bind to the filter identity. A local subset is never treated as a complete provider page: it only fills the first screen of a cold page 1.
 
-The first response includes entities, ordered primary IDs, a stable query ID, and coverage. A missing page can still contain clearly partial cached matches. Once upstream ingestion commits, normalized entity deltas arrive over SSE. The completion signal causes an active query to read authoritative coverage and IDs again. Query metadata is itself a TanStack DB entity.
+## Feeds and views
 
-Pagination follows provider page limits and continues even when a locally filtered page is empty. IDs are deduplicated across loaded pages. For combined movie/TV sorts, a buffered merge preserves global source ordering across output pages, carrying the unread lane buffers in durable coverage state. Random and personalized ranking use a bounded provider candidate window; random discovery retains its URL seed, and personalization scores genre preferences from actual likes/dislikes. Saved feed parameters are persisted per user; useful active filters are reflected in the URL.
+`src/server/feeds.ts` turns catalog pages into post feeds:
 
-Search immediately renders matching canonical cached entities, then supplements them through the same durable query/ingestion system. Movie, TV, and person results have navigable identities. User/list search uses public normalized projections.
+- **For You / Explore** expand each page's accounts into featured posts (`featuredPosts`) and weave recent member posts in (`interleave`). Topic chips map to `type`/`genres`; For You's "All" uses trending (which includes people). Hydration of the page's accounts is scheduled at low priority so richer posts (trailers, galleries, cast) appear as the cache warms.
+- **Following** reads the viewer's follows, round-robins followed catalog accounts' derived posts and merges member posts by followed members or tagging followed accounts. It is paginated by offset.
+- **Account** returns the account graph, its derived posts and tab views (`posts`, `videos`, `community`, `cast`, `related`, `credits`, `likes`).
+- **Post** returns a post with its latest comments; **Search** returns members and provider accounts.
 
-Query counters, latency, cache hits/misses, provider requests/rate limits, and failed jobs are exposed through authenticated metrics. Source responses and errors never expose provider credentials.
+Every read returns `QueryResult`: entities, ordered IDs, named `views`, coverage, and the event `subscriptions` whose changes make it stale. Posts arrive with their author, engagement counters, author audience and the viewer's like/follow state. The browser stores each read as a `query` row in TanStack DB; entities stay in their canonical collections.
 
-## Anticipatory navigation
+Feed ordering in the browser is append-only: `useFeed` accumulates pages and de-duplicates, so a late provider result or a later page never moves a post already shown.
 
-Navigation prioritizes switching screens immediately. All page components and the navigation shell
-are bundled up front; routes have no asynchronous data or artwork loaders. Clicks, back/forward,
-and filter/search URL changes commit independently of API, provider, or image readiness. The
-destination renders cached canonical data immediately, or its structural placeholder when uncached.
-Missing data and artwork arrive asynchronously through page effects and SSE. Failed cold detail
-reads offer a retry on the destination. Every application screen first commits a lightweight
-destination heading, using canonical cached list/profile names when available. Detail previews
-also show cached artwork. The shared screen boundary schedules live queries, derived indexes,
-and larger content after the first rendering opportunity in an interruptible React transition;
-it cancels pending frames when navigating away. Search/filter changes within a screen preserve
-its controls and input. The root subscribes only to authentication-route changes, keeping shared
-collection hooks and indexes out of pathname navigation. Partial cached matches never imply
-complete provider coverage.
+Query counters, latency, cache hits/misses, provider requests/rate limits, and failed jobs are exposed through session-protected metrics. Source responses and errors never expose provider credentials.
 
-Prediction starts after the screen/scroll has settled for 500 ms. It prepares primary navigation
-once per session and at most two visible content destinations. Discovery separately prepares its
-current and next title after resting for 450 ms, and requests the next result page twelve slides
-before the end. All speculative data reads share a three-request budget. Predictions pause while a
-navigation is pending; hidden tabs, Save-Data and 2G connections suppress automatic prediction.
-Keyboard focus, a 350 ms hover and primary press-down schedule preparation outside the input
-handler. Preparation and viewport scans use browser background-priority tasks, with idle callbacks
-or a timer as fallbacks; pending work is cancellable. A primary press requests foreground network
-priority when its preparation starts, while navigation proceeds independently. Moving across a
-grid quickly starts no intent requests. Destination
-data effects join in-flight work and bypass the speculative request budget. Abandoned interests cancel browser reads
-when no other consumer needs them; durable shared hydration continues on the server.
+## Navigation
 
-`GET /api/title/:id?warm=1` remains a cache-only hint. A high-confidence prediction adds `ready=1`,
-which schedules missing detail hydration 200 ms behind foreground work and waits for the complete
-graph. Foreground ready reads schedule immediately. Delayed jobs wake the worker when due instead of
-waiting for its next poll. Discovery's `ready=1` waits for its existing durable query job and reads
-back authoritative page coverage. Readiness waits are bounded to ten seconds per server request and
-use in-process completion signals, without browser polling or holding a database connection. A failed
-or timed-out readiness request never claims complete provider coverage. These optional background
-preparations never gate a route transition.
-
-The same image resolver and responsive slots serve prediction and rendering. Background prediction
-prepares critical artwork for reuse; image requests are shared and foreground consumers raise their priority.
-Failed artwork or a three-second artwork timeout uses a static fallback, retained for 30 seconds to
-avoid repeatedly requesting failing artwork. Successful decoded artwork is retained for 60 seconds
-in a bounded metadata cache. Offscreen artwork remains lazy.
-
-Request metadata retains query IDs only; all entities remain in TanStack DB. Complete reads are
-trusted for 60 seconds (five seconds for incomplete coverage), and events/commands invalidate affected
-keys. Invalidation during an in-flight read also prevents its eventual response from becoming fresh
-again. Social reads use the same 60-second window. Live queries have explicit identities, and detail
-views subscribe only to their own graph so speculative filmographies do not rerender the current
-screen for unrelated entities.
-
-SSE events received within 40 ms become one collection commit. Re-reading an active subscription is
-coalesced to one trailing request per 300 ms. See [observability](observability.md) for measurements.
-Cold network/provider misses still take time; preloading reduces the chance of encountering one and
-navigation never waits for them. Visible data may fill in progressively; rendering still takes CPU
-time on the device.
-
-## Visible data and cached neighbour graphs
-
-A title response also reads the server's cached rows for its first eight credited people and eight
-related titles in one bounded SQL query. All available summaries are upgraded; at most two cached neighbours
-can include their first-screen graphs, preferring visible people and then related titles. A person preview carries at
-most 24 filmography titles. Expansion is one level only and starts no extra provider work. The
-primary title keeps its full graph. Neighbour metadata uses `coverage.projection: "viewport"` and
-`data.graphScope: "viewport"`; it never satisfies a complete-detail read. Opening that neighbour
-can render its cached first screen while its full read continues independently.
-
-Image preparation starts from already-cached URLs alongside HTTP, then directly from response
-entities before their collection commit. The shared graph selector warms lead artwork, visible
-credits/related titles, seasons and episode stills with at most 24 image interests per graph bundle. Secondary previews prepare only their lead artwork;
-their own neighbouring images wait for direct interest.
-The existing responsive resolver, cancellation, priority and bounded decoded-image cache still apply.
-
-Destination detail HTTP reads start after the preview's first rendering opportunity, so a fast
-response and its synchronous collection commit cannot delay opening the page. Optional preparation
-can already have a read in flight; the destination adopts it independently of navigation.
-Keyed live queries use synchronous reads of the same canonical collections while establishing their
-subscriptions, avoiding empty cast/genre/card frames when the data is already present. Source
-`graphVersion` metadata distinguishes loaded relations from a newer summary announcement. Identical
-positive-version graphs and query metadata do not trigger duplicate upserts; viewport projections
-cannot replace complete relations at the same version. A new summary still permits the subsequent
-full graph to apply. SSE refresh skips a graph whose announced version has already been loaded.
-
-The worker persists priority in job parameters: active reads precede intent preparation and
-background warming. It claims one job at a time and checks for more due work immediately after
-completion, rather than reserving a speculative batch or sleeping 800 ms between batches. Empty
-polls back off but also consider the next pending job deadline, so later delayed interests are not
-missed after the earliest wake fires. Provider pacing, durable retry deadlines and rate-limit
-checkpoints remain in effect.
+All route components ship in the initial bundle and commit without awaiting data. A destination renders cached canonical data immediately or reserved placeholders, and the route's own read joins the navigation's telemetry trace and marks its content ready.

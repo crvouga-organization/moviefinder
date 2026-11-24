@@ -139,6 +139,7 @@ export const checkpoints = mf.table("sync_checkpoint", {
   payload: jsonb().$type<{ resumeAt: number }>().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+// Legacy tag, list and activity tables are retained (no destructive migration) but unused.
 export const statuses = mf.table(
   "title_status",
   {
@@ -233,7 +234,10 @@ export const follows = mf.table(
     targetKind: text("target_kind").notNull(),
     version: bigint({ mode: "number" }).notNull().default(1),
   },
-  (t) => [uniqueIndex("follow_user_target_idx").on(t.userId, t.targetId, t.targetKind)],
+  (t) => [
+    uniqueIndex("follow_user_target_idx").on(t.userId, t.targetId, t.targetKind),
+    index("follow_target_idx").on(t.targetId),
+  ],
 );
 export const feeds = mf.table("saved_feed", {
   id: text().primaryKey(),
@@ -280,3 +284,64 @@ export const operations = mf.table(
   },
   (t) => [primaryKey({ columns: [t.userId, t.id] })],
 );
+export const posts = mf.table(
+  "post",
+  {
+    id: text().primaryKey(),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    body: text().notNull().default(""),
+    subjectId: text("subject_id"),
+    media: jsonb().$type<unknown[]>().notNull().default([]),
+    version: bigint({ mode: "number" }).notNull().default(1),
+    ...dates(),
+  },
+  (t) => [
+    index("post_author_idx").on(t.authorId, t.createdAt),
+    index("post_subject_idx").on(t.subjectId, t.createdAt),
+    index("post_created_idx").on(t.createdAt),
+  ],
+);
+export const likes = mf.table(
+  "post_like",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    postId: text("post_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.postId] }),
+    index("post_like_post_idx").on(t.postId),
+    index("post_like_user_created_idx").on(t.userId, t.createdAt),
+  ],
+);
+export const comments = mf.table(
+  "comment",
+  {
+    id: text().primaryKey(),
+    postId: text("post_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    body: text().notNull(),
+    version: bigint({ mode: "number" }).notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("comment_post_idx").on(t.postId, t.createdAt)],
+);
+export const engagement = mf.table("post_engagement", {
+  postId: text("post_id").primaryKey(),
+  likes: integer().notNull().default(0),
+  comments: integer().notNull().default(0),
+  version: bigint({ mode: "number" }).notNull().default(1),
+});
+export const accountStats = mf.table("account_stat", {
+  accountId: text("account_id").primaryKey(),
+  followers: integer().notNull().default(0),
+  following: integer().notNull().default(0),
+  posts: integer().notNull().default(0),
+  version: bigint({ mode: "number" }).notNull().default(1),
+});

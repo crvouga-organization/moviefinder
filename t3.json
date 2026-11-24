@@ -1,0 +1,17 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "defaultThreadEnvMode": "worktree",
+  "scripts": [
+    {
+      "name": "Run app",
+      "command": "exec bash scripts/t3/project.sh run",
+      "icon": "play"
+    },
+    {
+      "name": "Setup",
+      "command": "exec bash scripts/t3/project.sh setup",
+      "icon": "configure",
+      "runOnWorktreeCreate": true
+    }
+  ]
+}

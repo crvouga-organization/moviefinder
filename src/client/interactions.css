@@ -13,12 +13,6 @@ html {
   transform: none;
 }
 
-/* Pointer capture needs to own the reorder gesture on touch screens. Only the
-   handle suppresses scrolling; the rest of each list row scrolls normally. */
-.list-drag-handle {
-  touch-action: none;
-}
-
 /* VisuallyHidden has no reveal-on-focus API. Keep the skip link visible when
    focused, above the fixed application header, without overriding Mantine. */
 .skip-link {

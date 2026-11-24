@@ -13,9 +13,9 @@ When debugging local slowness or runtime behavior, read `bun run telemetry` (see
 
 Atlas exclusively owns migrations. Update atlas/schema.sql and generate a migration with Atlas; keep Drizzle definitions aligned. No Drizzle Kit or Better Auth migration runner. Commit atlas.sum with migrations. Do not add schema creation to application migrations: OpenTofu owns the allocation.
 
-All TMDB HTTP requests belong in entity-store-sync. Preserve source JSON separately from normalized client projections. Never treat a locally matching subset as a complete provider result page. All server entities live in TanStack DB query collections. Use Hono RPC commands with optimistic transactions and stable operation IDs. Do not introduce parallel component caches of entities, spinning indicators, anonymous application access, or private lists.
+All TMDB HTTP requests belong in entity-store-sync. Preserve source JSON separately from normalized client projections. Never treat a locally matching subset as a complete provider result page. All server entities live in TanStack DB query collections. Use Hono RPC commands with optimistic transactions and stable operation IDs. Do not introduce parallel component caches of entities, spinning indicators, or private posts/profiles. All reads are public; interactions require a session.
 
-Preserve commit ordering of durable events and atomicity with mutations. Keep list edits item-based; never replace the whole ordering array. Verify permission boundaries on the backend.
+Preserve commit ordering of durable events and atomicity with mutations. Catalog posts are derived deterministically from source records; keep their IDs stable. Likes and follows toggle with newer versions, never removals. Feed ordering is append-only. Verify permission boundaries on the backend.
 
 Secrets must never appear in source, output, images, artifacts, test evidence, or documentation. .vault.yaml contains only coordinates. Runtime configuration is environment-based. Production runs one Bun server and accepts only its explicitly configured origins, with independent host-only authentication cookies and exact registered callbacks.
 

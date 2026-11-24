@@ -1,20 +1,55 @@
-import { normalize } from "./entity-store/normalize";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import { generateKeyBetween } from "fractional-indexing";
-import type { Database } from "./db";
+import { and, eq, sql } from "drizzle-orm";
+import type { Database, Executor } from "./db";
 import * as s from "./db/schema";
 import {
+  accountKind,
+  followKey,
+  postAccount,
+  stableSerialize,
+  userAccount,
+  userIdOf,
   type Command,
   type Entity,
   type Kind,
-  stableSerialize,
-  canEdit,
-  canManage,
 } from "../shared/contracts";
 import { digest } from "./entity-store";
-import { rowEntity } from "./state";
 import { appendEvent } from "./events";
 import { AppError } from "./log";
+import { catalogPostsFor } from "./posts";
+import {
+  bumpAudience,
+  bumpEngagement,
+  commentEntity,
+  followEntity,
+  likeEntity,
+  memberPost,
+  publicUser,
+  userEntity,
+} from "./social";
+
+async function postExists(tx: Executor, postId: string) {
+  if (postId.startsWith("post:")) {
+    const [row] = await tx.select({ id: s.posts.id }).from(s.posts).where(eq(s.posts.id, postId));
+    return !!row;
+  }
+  const account = postAccount(postId);
+  if (!account) return false;
+  const [row] = await tx.select().from(s.sources).where(eq(s.sources.id, account));
+  return !!row && catalogPostsFor(row).some((p) => p.id === postId);
+}
+async function accountExists(tx: Executor, account: string) {
+  const member = userIdOf(account);
+  if (member) {
+    const [row] = await tx.select({ id: s.user.id }).from(s.user).where(eq(s.user.id, member));
+    return !!row;
+  }
+  const [row] = await tx
+    .select({ id: s.sources.id })
+    .from(s.sources)
+    .where(eq(s.sources.id, account));
+  return !!row;
+}
+
 export async function executeCommand(db: Database, userId: string, command: Command) {
   return db.transaction(async (tx) => {
     // Global commit order lock also makes duplicated operation IDs safe across replicas.
@@ -29,408 +64,164 @@ export async function executeCommand(db: Database, userId: string, command: Comm
         throw new AppError(409, "Operation ID already belongs to another command");
       return previous.result;
     }
-    const entities: Entity[] = [],
-      removed: { kind: Kind; id: string }[] = [];
-    let audience: string | null = null;
-    let subscription = "social";
-    const push = (kind: Kind, rows: Record<string, unknown>[]) =>
-      entities.push(...rows.map((row) => rowEntity(kind, row)));
-    const role = async (listId: string, owner = false) => {
-      const [list] = await tx.select().from(s.lists).where(eq(s.lists.id, listId));
-      if (!list) throw new AppError(404, "List not found");
-      const [member] = await tx
-        .select()
-        .from(s.collaborators)
-        .where(and(eq(s.collaborators.listId, listId), eq(s.collaborators.userId, userId)));
-      if (!(owner ? canManage(member?.role) : canEdit(member?.role)))
-        throw new AppError(
-          403,
-          owner
-            ? "Only the list owner can manage this list"
-            : "Join this list as an editor to make changes",
-        );
-      subscription = `list:${listId}`;
-      return list;
-    };
-    const titleExists = async (titleId: string) => {
-      const [source] = await tx
-        .select({ id: s.sources.id })
-        .from(s.sources)
-        .where(eq(s.sources.id, titleId));
-      if (!source) throw new AppError(409, "Title details must be cached before this action");
-    };
-    const activity = async (title: string, targetId: string) =>
-      push(
-        "activity",
-        await tx
-          .insert(s.activities)
-          .values({ id: crypto.randomUUID(), userId, title, targetId })
-          .returning(),
-      );
+    // Counters, posts and comments are public; the viewer's own likes and follows are private.
+    const shared: Entity[] = [],
+      personal: Entity[] = [],
+      sharedRemoved: { kind: Kind; id: string }[] = [],
+      personalRemoved: { kind: Kind; id: string }[] = [];
+    let subscription = `user:${userId}`;
+    // Toggle versions: later than any earlier state of the same like or follow.
+    const now = Date.now();
     switch (command.type) {
-      case "status": {
-        await titleExists(command.titleId);
-        const id = `${userId}:${command.titleId}`;
-        const patch = {
-          ...(command.seen === undefined ? {} : { seen: command.seen }),
-          ...(command.sentiment === undefined ? {} : { sentiment: command.sentiment }),
-        };
-        push(
-          "status",
-          await tx
-            .insert(s.statuses)
-            .values({ id, userId, titleId: command.titleId, ...patch })
-            .onConflictDoUpdate({
-              target: [s.statuses.userId, s.statuses.titleId],
-              set: { ...patch, version: sql`${s.statuses.version}+1`, updatedAt: new Date() },
-            })
-            .returning(),
-        );
-        await activity("updated their take", command.titleId);
+      case "like": {
+        if (!(await postExists(tx, command.postId)))
+          throw new AppError(404, "This post is no longer available");
+        subscription = `post:${command.postId}`;
+        const changed = command.like
+          ? (
+              await tx
+                .insert(s.likes)
+                .values({ userId, postId: command.postId, createdAt: new Date(now) })
+                .onConflictDoNothing()
+                .returning()
+            ).length
+          : (
+              await tx
+                .delete(s.likes)
+                .where(and(eq(s.likes.userId, userId), eq(s.likes.postId, command.postId)))
+                .returning()
+            ).length;
+        if (changed)
+          shared.push(await bumpEngagement(tx, command.postId, { likes: command.like ? 1 : -1 }));
+        personal.push(likeEntity(userId, command.postId, now, command.like));
         break;
       }
-      case "list.create": {
-        const id = command.operationId;
-        push(
-          "list",
-          await tx
-            .insert(s.lists)
-            .values({ id, ownerId: userId, title: command.title, description: command.description })
-            .returning(),
-        );
-        push(
-          "collaborator",
-          await tx
-            .insert(s.collaborators)
-            .values({ id: crypto.randomUUID(), listId: id, userId, role: "owner" })
-            .returning(),
-        );
-        await activity("created a list", id);
-        break;
-      }
-      case "list.edit":
-        await role(command.listId, true);
-        push(
-          "list",
-          await tx
-            .update(s.lists)
-            .set({
-              title: command.title,
-              description: command.description,
-              updatedAt: new Date(),
-              version: sql`${s.lists.version}+1`,
-            })
-            .where(eq(s.lists.id, command.listId))
-            .returning(),
-        );
-        break;
-      case "list.add": {
-        await role(command.listId);
-        await titleExists(command.titleId);
-        const [last] = await tx
-          .select()
-          .from(s.items)
-          .where(eq(s.items.listId, command.listId))
-          .orderBy(sql`${s.items.orderKey} collate "C" desc`)
-          .limit(1);
-        push(
-          "item",
-          await tx
-            .insert(s.items)
-            .values({
-              id: command.operationId,
-              listId: command.listId,
-              titleId: command.titleId,
-              addedBy: userId,
-              orderKey: generateKeyBetween(last?.orderKey ?? null, null),
-            })
-            .onConflictDoUpdate({
-              target: [s.items.listId, s.items.titleId],
-              set: { titleId: command.titleId },
-            })
-            .returning(),
-        );
-        await activity("added a title to a list", command.listId);
-        break;
-      }
-      case "list.remove": {
-        await role(command.listId);
-        const rows = await tx
-          .delete(s.items)
-          .where(and(eq(s.items.id, command.itemId), eq(s.items.listId, command.listId)))
-          .returning();
-        removed.push(...rows.map((r) => ({ kind: "item" as const, id: r.id })));
-        break;
-      }
-      case "list.move": {
-        await role(command.listId);
-        const rows = await tx
-          .select()
-          .from(s.items)
-          .where(eq(s.items.listId, command.listId))
-          .orderBy(sql`${s.items.orderKey} collate "C"`, s.items.id);
-        const item = rows.find((r) => r.id === command.itemId);
-        if (!item) throw new AppError(404, "List entry was removed");
-        if (command.beforeId === item.id) break;
-        const rest = rows.filter((r) => r.id !== item.id);
-        let index = command.beforeId
-          ? rest.findIndex((r) => r.id === command.beforeId)
-          : rest.length;
-        if (index < 0) index = rest.length;
-        const orderKey = generateKeyBetween(
-          rest[index - 1]?.orderKey ?? null,
-          rest[index]?.orderKey ?? null,
-        );
-        push(
-          "item",
-          await tx
-            .update(s.items)
-            .set({ orderKey, version: sql`${s.items.version}+1`, updatedAt: new Date() })
-            .where(eq(s.items.id, item.id))
-            .returning(),
-        );
-        break;
-      }
-      case "list.invite": {
-        await role(command.listId, true);
-        const [target] = await tx
-          .select({ id: s.user.id })
-          .from(s.user)
-          .where(eq(s.user.id, command.userId));
-        if (!target) throw new AppError(404, "User not found");
-        if (command.userId === userId) throw new AppError(409, "You already own this list");
-        push(
-          "invitation",
-          await tx
-            .insert(s.invitations)
-            .values({
-              id: crypto.randomUUID(),
-              listId: command.listId,
-              userId: command.userId,
-              invitedBy: userId,
-            })
-            .onConflictDoUpdate({
-              target: [s.invitations.listId, s.invitations.userId],
-              set: { state: "pending", version: sql`${s.invitations.version}+1` },
-            })
-            .returning(),
-        );
-        break;
-      }
-      case "invitation.accept":
-      case "invitation.decline": {
-        const [inv] = await tx
-          .select()
-          .from(s.invitations)
-          .where(eq(s.invitations.id, command.invitationId));
-        if (!inv || inv.userId !== userId)
-          throw new AppError(403, "This invitation belongs to another user");
-        if (inv.state !== "pending")
-          throw new AppError(409, "Invitation has already been answered");
-        if (command.type === "invitation.accept")
-          push(
-            "collaborator",
-            await tx
-              .insert(s.collaborators)
-              .values({ id: crypto.randomUUID(), listId: inv.listId, userId, role: "editor" })
-              .onConflictDoNothing()
-              .returning(),
-          );
-        push(
-          "invitation",
-          await tx
-            .update(s.invitations)
-            .set({
-              state: command.type === "invitation.accept" ? "accepted" : "declined",
-              version: sql`${s.invitations.version}+1`,
-            })
-            .where(eq(s.invitations.id, inv.id))
-            .returning(),
-        );
-        break;
-      }
-      case "list.member.remove": {
-        await role(command.listId, true);
-        const [list] = await tx.select().from(s.lists).where(eq(s.lists.id, command.listId));
-        if (list?.ownerId === command.userId)
-          throw new AppError(409, "The list owner cannot be removed");
-        const rows = await tx
-          .delete(s.collaborators)
-          .where(
-            and(
-              eq(s.collaborators.listId, command.listId),
-              eq(s.collaborators.userId, command.userId),
-            ),
-          )
-          .returning();
-        removed.push(...rows.map((r) => ({ kind: "collaborator" as const, id: r.id })));
-        push(
-          "invitation",
-          await tx
-            .update(s.invitations)
-            .set({
-              state: "declined",
-              version: sql`${s.invitations.version}+1`,
-              updatedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(s.invitations.listId, command.listId),
-                eq(s.invitations.userId, command.userId),
-                eq(s.invitations.state, "pending"),
-              ),
-            )
-            .returning(),
-        );
-        break;
-      }
-      case "list.follow":
-      case "user.follow": {
-        audience = userId;
-        const targetId = command.type === "list.follow" ? command.listId : command.userId,
-          targetKind = command.type === "list.follow" ? "list" : "user";
-        const exists =
-          command.type === "list.follow"
-            ? await tx.select({ id: s.lists.id }).from(s.lists).where(eq(s.lists.id, targetId))
-            : await tx.select({ id: s.user.id }).from(s.user).where(eq(s.user.id, targetId));
-        if (!exists.length) throw new AppError(404, "Follow target not found");
-        if (command.follow)
-          push(
-            "follow",
-            await tx
-              .insert(s.follows)
-              .values({ id: crypto.randomUUID(), userId, targetId, targetKind })
-              .onConflictDoNothing()
-              .returning(),
-          );
-        else {
-          const rows = await tx
-            .delete(s.follows)
-            .where(
-              and(
-                eq(s.follows.userId, userId),
-                eq(s.follows.targetId, targetId),
-                eq(s.follows.targetKind, targetKind),
-              ),
-            )
-            .returning();
-          removed.push(...rows.map((r) => ({ kind: "follow" as const, id: r.id })));
+      case "follow": {
+        if (command.accountId === userAccount(userId))
+          throw new AppError(400, "You can’t follow yourself");
+        if (!(await accountExists(tx, command.accountId)))
+          throw new AppError(404, "This account is no longer available");
+        subscription = `account:${command.accountId}`;
+        const changed = command.follow
+          ? (
+              await tx
+                .insert(s.follows)
+                .values({
+                  id: followKey(userId, command.accountId),
+                  userId,
+                  targetId: command.accountId,
+                  targetKind: accountKind(command.accountId),
+                  version: now,
+                })
+                .onConflictDoNothing()
+                .returning()
+            ).length
+          : (
+              await tx
+                .delete(s.follows)
+                .where(and(eq(s.follows.userId, userId), eq(s.follows.targetId, command.accountId)))
+                .returning()
+            ).length;
+        if (changed) {
+          const delta = command.follow ? 1 : -1;
+          shared.push(await bumpAudience(tx, command.accountId, { followers: delta }));
+          shared.push(await bumpAudience(tx, userAccount(userId), { following: delta }));
         }
+        personal.push(followEntity(userId, command.accountId, now, command.follow));
         break;
       }
-      case "list.copy": {
-        const [original] = await tx.select().from(s.lists).where(eq(s.lists.id, command.listId));
-        if (!original) throw new AppError(404, "List not found");
-        const id = command.operationId;
-        push(
-          "list",
-          await tx
-            .insert(s.lists)
-            .values({
-              id,
-              ownerId: userId,
-              title: `${original.title} (copy)`,
-              description: original.description,
-            })
-            .returning(),
-        );
-        push(
-          "collaborator",
-          await tx
-            .insert(s.collaborators)
-            .values({ id: crypto.randomUUID(), listId: id, userId, role: "owner" })
-            .returning(),
-        );
-        const entries = await tx.select().from(s.items).where(eq(s.items.listId, original.id));
-        if (entries.length)
-          push(
-            "item",
-            await tx
-              .insert(s.items)
-              .values(
-                entries.map((r) => ({
-                  id: crypto.randomUUID(),
-                  listId: id,
-                  titleId: r.titleId,
-                  orderKey: r.orderKey,
-                  addedBy: userId,
-                })),
-              )
-              .returning(),
-          );
+      case "comment.create": {
+        if (!(await postExists(tx, command.postId)))
+          throw new AppError(404, "This post is no longer available");
+        subscription = `post:${command.postId}`;
+        const [row] = await tx
+          .insert(s.comments)
+          .values({ id: command.operationId, postId: command.postId, userId, body: command.body })
+          .returning();
+        shared.push(commentEntity(row!));
+        shared.push(await bumpEngagement(tx, command.postId, { comments: 1 }));
+        const [author] = await tx.select(publicUser).from(s.user).where(eq(s.user.id, userId));
+        if (author) shared.push(userEntity(author));
         break;
       }
-      case "feed.save":
-        audience = userId;
-        push(
-          "feed",
-          await tx
-            .insert(s.feeds)
-            .values({
-              id: command.operationId,
-              userId,
-              title: command.title,
-              params: JSON.parse(stableSerialize(command.params)),
-            })
-            .returning(),
-        );
+      case "comment.delete": {
+        const [comment] = await tx
+          .select()
+          .from(s.comments)
+          .where(eq(s.comments.id, command.commentId));
+        if (!comment) throw new AppError(404, "This comment was already removed");
+        const [post] = comment.postId.startsWith("post:")
+          ? await tx.select().from(s.posts).where(eq(s.posts.id, comment.postId))
+          : [];
+        if (comment.userId !== userId && post?.authorId !== userId)
+          throw new AppError(403, "Only the comment’s author can remove it");
+        subscription = `post:${comment.postId}`;
+        await tx.delete(s.comments).where(eq(s.comments.id, comment.id));
+        sharedRemoved.push({ kind: "comment", id: comment.id });
+        shared.push(await bumpEngagement(tx, comment.postId, { comments: -1 }));
         break;
-      case "profile":
-        push(
-          "user",
-          await tx
-            .update(s.user)
-            .set({
-              name: command.name,
-              username: command.username.toLowerCase(),
-              displayUsername: command.username,
-              bio: command.bio,
-              image: command.image || null,
-              updatedAt: new Date(),
-            })
-            .where(eq(s.user.id, userId))
-            .returning({
-              id: s.user.id,
-              name: s.user.name,
-              username: s.user.username,
-              image: s.user.image,
-              bio: s.user.bio,
-              updatedAt: s.user.updatedAt,
-            }),
-        );
+      }
+      case "post.create": {
+        if (!command.body && !command.media.length)
+          throw new AppError(400, "Write something or add artwork to post");
+        if (command.subjectId && !(await accountExists(tx, command.subjectId)))
+          throw new AppError(404, "The tagged title or person is no longer available");
+        subscription = "posts";
+        const [row] = await tx
+          .insert(s.posts)
+          .values({
+            id: `post:${command.operationId}`,
+            authorId: userId,
+            body: command.body,
+            subjectId: command.subjectId ?? null,
+            media: command.media,
+          })
+          .returning();
+        shared.push(memberPost(row!));
+        shared.push(await bumpAudience(tx, userAccount(userId), { posts: 1 }));
+        const [author] = await tx.select(publicUser).from(s.user).where(eq(s.user.id, userId));
+        if (author) shared.push(userEntity(author));
         break;
+      }
+      case "post.delete": {
+        const [post] = await tx.select().from(s.posts).where(eq(s.posts.id, command.postId));
+        if (!post) throw new AppError(404, "This post was already removed");
+        if (post.authorId !== userId) throw new AppError(403, "Only the author can delete a post");
+        subscription = "posts";
+        await tx.delete(s.posts).where(eq(s.posts.id, post.id));
+        await tx.delete(s.comments).where(eq(s.comments.postId, post.id));
+        await tx.delete(s.likes).where(eq(s.likes.postId, post.id));
+        await tx.delete(s.engagement).where(eq(s.engagement.postId, post.id));
+        sharedRemoved.push({ kind: "post", id: post.id }, { kind: "engagement", id: post.id });
+        shared.push(await bumpAudience(tx, userAccount(userId), { posts: -1 }));
+        break;
+      }
+      case "profile": {
+        const [row] = await tx
+          .update(s.user)
+          .set({
+            name: command.name,
+            username: command.username.toLowerCase(),
+            displayUsername: command.username,
+            bio: command.bio,
+            image: command.image || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(s.user.id, userId))
+          .returning(publicUser);
+        if (row) shared.push(userEntity(row));
+        subscription = `account:${userAccount(userId)}`;
+        break;
+      }
     }
-    if (
-      "listId" in command &&
-      (entities.length > 0 || removed.length > 0) &&
-      ["list.edit", "list.move", "list.remove", "list.invite", "list.member.remove"].includes(
-        command.type,
-      )
-    ) {
-      const verbs: Record<string, string> = {
-        "list.edit": "updated a collection",
-        "list.move": "reordered a collection",
-        "list.remove": "removed a title from a collection",
-        "list.invite": "invited a collaborator",
-        "list.member.remove": "updated the collaborators",
-      };
-      await activity(verbs[command.type]!, command.listId);
-    }
-    // A list/status delta carries the referenced catalog projection, so a viewer
-    // who has never opened that title can render it without an extra round trip.
-    const referenced = [
-      ...new Set(
-        entities
-          .filter((e) => e.kind === "item" || e.kind === "status")
-          .map((e) => String(e.data.titleId)),
-      ),
-    ];
-    if (referenced.length) {
-      const records = await tx.select().from(s.sources).where(inArray(s.sources.id, referenced));
-      for (const row of records) entities.push(...normalize(row.id, row.payload, row.version));
-    }
-    const result = { entities, removed };
-    await appendEvent(tx, subscription, entities, removed, audience);
+    if (shared.length || sharedRemoved.length)
+      await appendEvent(tx, subscription, shared, sharedRemoved, null);
+    if (personal.length || personalRemoved.length)
+      await appendEvent(tx, `viewer:${userId}`, personal, personalRemoved, userId);
+    const result = {
+      entities: [...shared, ...personal],
+      removed: [...sharedRemoved, ...personalRemoved],
+    };
     await tx.insert(s.operations).values({ userId, id: command.operationId, fingerprint, result });
     return result;
   });

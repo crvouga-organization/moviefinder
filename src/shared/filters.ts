@@ -1,21 +1,8 @@
 import { fieldText, type Entity, type FeedParams } from "./contracts";
-export function localMatch(
-  e: Entity,
-  p: FeedParams,
-  status?: { seen: boolean; sentiment: string },
-  inLists: Set<string> = new Set(),
-  providerFiltered = false,
-) {
+export function localMatch(e: Entity, p: FeedParams, providerFiltered = false) {
   if (e.kind !== "movie" && e.kind !== "tv") return p.q !== "" && e.kind === "person";
   if (p.type !== "both" && e.kind !== p.type) return false;
-  if ((p.seen === "seen" && !status?.seen) || (p.seen === "unseen" && status?.seen)) return false;
-  if (p.sentiment !== "all" && (status?.sentiment ?? "unrated") !== p.sentiment) return false;
-  if (
-    p.exclude.includes(e.id) ||
-    (p.list && !inLists.has(p.list)) ||
-    (p.notInList && inLists.has(p.notInList))
-  )
-    return false;
+  if (p.exclude.includes(e.id)) return false;
   if (
     p.genres.some((g) => !e.genres?.includes(`tmdb:genre:${g}`)) ||
     p.excludeGenres.some((g) => e.genres?.includes(`tmdb:genre:${g}`))

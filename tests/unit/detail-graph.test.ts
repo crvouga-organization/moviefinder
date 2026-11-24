@@ -10,7 +10,13 @@ describe("bounded first-screen graphs", () => {
   it("selects the same visible credits and related titles for data and artwork", () => {
     const byId = new Map(graph.map((entity) => [entity.id, entity]));
     expect(detailTargets(full, (id) => byId.get(id))).toMatchObject({
-      people: ["tmdb:person:819", "tmdb:person:7467"],
+      people: [
+        "tmdb:person:819",
+        "tmdb:person:287",
+        "tmdb:person:1283",
+        "tmdb:person:7470",
+        "tmdb:person:7467",
+      ],
       titles: ["tmdb:movie:680"],
     });
   });

@@ -15,15 +15,8 @@ export function serveClient<E extends Env>(app: Hono<E>, authForRequest: AuthFor
       }
       return c.notFound();
     }
-    if (!c.req.path.startsWith("/auth")) {
-      const instance = authForRequest(c.req.raw);
-      if (!instance) return c.text("Untrusted request host", 403);
-      const session = await instance.auth.api.getSession({ headers: c.req.raw.headers });
-      if (!session)
-        return c.redirect(
-          `/auth?returnTo=${encodeURIComponent(c.req.path + new URL(c.req.url).search)}`,
-        );
-    }
+    // Every application route is public; signing in only unlocks interactions.
+    if (!authForRequest(c.req.raw)) return c.text("Untrusted request host", 403);
     const file = Bun.file(resolve(staticRoot, "index.html"));
     if (!(await file.exists()))
       return c.text("Build the client with bun run build before starting production.", 503);

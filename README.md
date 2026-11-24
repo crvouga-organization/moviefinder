@@ -1,6 +1,6 @@
 # MovieFinder
 
-A React and Mantine app for searching movies and TV shows, tracking watched titles and sentiment, and managing public lists. Discovery uses a virtualized vertical Swiper feed, independent seen/sentiment controls, composable filters, and progressive catalog updates. The interface has no loading spinners.
+A feed-first social app for movies and TV, in the style of Instagram and TikTok. Full-height vertical feeds (For You, Following, Explore) scroll through heterogeneous posts: posters, still galleries, cast galleries, trailers, season art, profile photos and member posts. Movies, TV shows, people and members each have an account profile with posts, followers and tabs. Everything is readable signed out; signing in unlocks likes, follows, comments and posting. The interface has no loading spinners.
 
 ## Run locally
 
@@ -9,7 +9,7 @@ Requires Bun 1.4.2, a supported Node runtime (22.22.3 used here), Atlas, and the
 1. `bun install --frozen-lockfile`.
 2. Authenticate using the documented `vault login` workflow. This checkout's `.vault.yaml` selects `personal/dev`.
 3. Run `bun run dev`, or choose **Run → MovieFinder** in super.engineering.
-4. Open the `http://localhost:<port>` URL printed at startup. Use **Sign in with Google**. A new MovieFinder account is created automatically on first sign-in.
+4. Open the `http://localhost:<port>` URL printed at startup. Browse signed out, or use **Sign in with Google** from Profile or any interaction prompt. A new MovieFinder account is created automatically on first sign-in.
 
 Startup initializes a local PostgreSQL cluster, creates the local database/schema, applies committed Atlas migrations, and starts both development servers. Both servers use free ports chosen at each start (the URL is printed), and Vite+ proxies API requests to Bun. The database listens only on loopback, uses an available port, and persists under ignored `.local/postgres`. Generated local credentials stay in private ignored `.local/postgres.json`; they never enter Git or Docker build contexts. `bun run telemetry watch --since 5m` shows live bottlenecks while you browse, and `bun run telemetry traces` connects navigation to API, database and provider work; see [observability](docs/observability.md). Stop shuts down the development servers and their PostgreSQL process while retaining your data. A later run reopens the same database.
 
@@ -22,6 +22,13 @@ Google is the only sign-in method. Password registration, password sign-in and r
 An existing deployment can accept additional owned HTTPS domains through `MOVIEFINDER_ADDITIONAL_ORIGINS` (comma-separated exact origins). Each hostname keeps its own authentication cookies, callback and CSRF boundary. Production retains `https://moviefinder.chrisvouga.dev` and adds `https://www.moviefinder.app`; the apex redirects to www. See the sign-in guide for both exact registered callbacks.
 
 When registration settings are saved in ignored `.local/auth-relay.json`, ordinary `bun run dev` configures Google automatically and retains the registered port. Live Google-backed sign-in has been verified locally; see the setup guide for registration expiry and renewal requirements.
+
+## T3 Code actions
+
+`t3.json` declares two project actions backed by [`scripts/t3/project.sh`](scripts/t3/project.sh); `mise.toml`/`mise.lock` pin Bun, Node and Atlas, and Bun installs JavaScript dependencies.
+
+- **Setup** runs when T3 creates a worktree: installs the pinned tools with mise, runs `bun install --frozen-lockfile` only when `package.json`/`bun.lock` changed, and initializes and migrates this checkout's embedded PostgreSQL so the first run starts warm.
+- **Run app** repeats the (no-op when warm) setup and starts `scripts/dev.ts`. Each checkout uses its own `.local/` database and free ports, so worktrees run side by side. Secrets come from `vault run` when the platform wrapper is installed, otherwise from the same `personal/dev` Vault config through `~/personal`'s `infra-vault run` (override with `PERSONAL_WORKSPACE`). Without either, it starts with a private per-checkout auth secret and no TMDB refresh.
 
 ## super.engineering hooks
 
@@ -68,9 +75,9 @@ All routes use a shared Mantine theme, provider and responsive AppShell. Read
 
 ## Architecture
 
-One Bun/Hono process serves React, authenticated APIs, Better Auth, and SSE. Drizzle queries the allocated `moviefinder` PostgreSQL schema; Atlas owns its migrations. `entity-store` owns source JSON storage and query-time normalization. `entity-store-sync` owns every TMDB request, durable jobs, rate limiting, and refresh policies. TanStack DB query collections hold normalized browser entities and optimistic transactions.
+One Bun/Hono process serves React, public read APIs, session-protected commands, Better Auth, and SSE. Drizzle queries the allocated `moviefinder` PostgreSQL schema; Atlas owns its migrations. `entity-store` owns source JSON storage and query-time normalization. `entity-store-sync` owns every TMDB request, durable jobs, rate limiting, and refresh policies. TanStack DB query collections hold normalized browser entities and optimistic transactions.
 
-The database retains events in the same transactions as mutations. Replay uses a global ordered cursor. A transaction-level PostgreSQL advisory lock makes event identity reflect commit order and gives item-level moves deterministic serialization. Stable item IDs and fractional keys avoid whole-list replacement.
+The database retains events in the same transactions as mutations. Replay uses a global ordered cursor; public events reach every visitor and a member's own likes/follows reach only them. A transaction-level PostgreSQL advisory lock makes event identity reflect commit order and serializes counter updates. Catalog posts are derived deterministically from cached TMDB records (`src/shared/posts.ts`), so likes and comments stay attached across refreshes.
 
 See [architecture](docs/architecture.md), [entity store](docs/entity-store.md), [queries](docs/query-system.md), [realtime](docs/realtime.md), [testing](docs/testing.md), and [infrastructure](docs/infrastructure.md).
 
@@ -78,6 +85,6 @@ See [architecture](docs/architecture.md), [entity store](docs/entity-store.md), 
 
 The shared inventory records the `moviefinder` service for `crvouga/moviefinder`, its `moviefinder` schema allocation, and `https://moviefinder.chrisvouga.dev`. A production deployment already exists; its health response alone does not verify Google-only sign-in. The inventory checked on 2026-10-25 does not yet include the public OIDC settings required by the new production startup guard. An approved production relay registration and platform configuration are rollout prerequisites. See [infrastructure](docs/infrastructure.md) and [Google sign-in setup](docs/auth-relay.md).
 
-Local development is ready independently of these production allocation requirements. Build the container with `docker build -t moviefinder:verification .`. Runtime secrets are supplied as environment variables, never build arguments. `/health` is public and independent of PostgreSQL. `/api/ready` and `/api/metrics` require authentication. See the infrastructure document before attempting rollout.
+Local development is ready independently of these production allocation requirements. Build the container with `docker build -t moviefinder:verification .`. Runtime secrets are supplied as environment variables, never build arguments. `/health` and all read APIs are public; `/health` is independent of PostgreSQL. `/api/ready`, `/api/metrics` and `/api/command` require a session. See the infrastructure document before attempting rollout.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming availability is attributed to JustWatch through TMDB.

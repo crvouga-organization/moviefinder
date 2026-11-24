@@ -1,12 +1,18 @@
 import { isTraceId } from "../shared/telemetry";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { socialQueries } from "./social";
+import { createFeeds } from "./feeds";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { streamSSE } from "hono/streaming";
 import { eq, sql, min } from "drizzle-orm";
-import { commandSchema, feedParams, sourceId, type EventEnvelope } from "../shared/contracts";
+import {
+  accountId,
+  commandSchema,
+  feedRequest,
+  postId,
+  type EventEnvelope,
+} from "../shared/contracts";
 import type { Config } from "./config";
 import type { Database } from "./db";
 import type { Auth } from "./auth";
@@ -34,9 +40,9 @@ export function createApplication(db: Database, config: Config, upstream?: Tmdb)
   const authForRequest = createAuthForOrigins(db, config),
     sync = createSync(db, upstream ?? createTmdb(config.TMDB_API_READ_ACCESS_TOKEN ?? "")),
     queries = createQueries(db, sync),
-    social = socialQueries(db),
+    feeds = createFeeds(db, queries, sync),
     shutdown = new AbortController();
-  const root = new Hono<{ Variables: { userId: string; requestId: string; auth: Auth } }>();
+  const root = new Hono<{ Variables: { userId: string | null; requestId: string; auth: Auth } }>();
   root.use("*", async (c, next) => {
     const requestId = crypto.randomUUID(),
       start = performance.now();
@@ -124,13 +130,13 @@ export function createApplication(db: Database, config: Config, upstream?: Tmdb)
       ? instance.auth.handler(c.req.raw)
       : c.json({ error: "Untrusted request host" }, 403);
   });
+  // Reading is public. A session, when present, personalizes reads and authorizes commands.
   root.use("/api/*", async (c, next) => {
     const instance = authForRequest(c.req.raw);
     if (!instance) return c.json({ error: "Untrusted request host" }, 403);
     const session = await instance.auth.api.getSession({ headers: c.req.raw.headers });
-    if (!session) return c.json({ error: "Sign in to continue" }, 401);
     c.set("auth", instance.auth);
-    c.set("userId", session.user.id);
+    c.set("userId", session?.user.id ?? null);
     if (
       !["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
       c.req.header("Origin") !== instance.origin
@@ -139,6 +145,11 @@ export function createApplication(db: Database, config: Config, upstream?: Tmdb)
     c.header("Cache-Control", "private, no-store");
     await next();
   });
+  const signedIn = (c: { get: (key: "userId") => string | null }) => {
+    const userId = c.get("userId");
+    if (!userId) throw new AppError(401, "Sign in to continue");
+    return userId;
+  };
   if (telemetryEnabled())
     root.post("/api/telemetry", zValidator("json", telemetryBatch), (c) => {
       for (const { t, kind, name, ...fields } of c.req.valid("json").events)
@@ -147,6 +158,7 @@ export function createApplication(db: Database, config: Config, upstream?: Tmdb)
     });
   const api = root
     .get("/api/ready", async (c) => {
+      signedIn(c);
       try {
         await assertDatabaseReady(db);
         return c.json({ status: "ready" });
@@ -155,6 +167,7 @@ export function createApplication(db: Database, config: Config, upstream?: Tmdb)
       }
     })
     .get("/api/metrics", async (c) => {
+      signedIn(c);
       const failed = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(jobs)
@@ -166,107 +179,27 @@ export function createApplication(db: Database, config: Config, upstream?: Tmdb)
       record("snapshot", "size", { entities: state.entities.length });
       return c.json(state);
     })
-    .get(
-      "/api/discover",
-      zValidator("query", feedParams.safeExtend({ ready: z.literal("1").optional() })),
-      async (c) => {
-        try {
-          const { ready, ...params } = c.req.valid("query");
-          return c.json(
-            await queries.discover(params, c.get("userId"), c.req.raw.signal, ready === "1"),
-          );
-        } catch (error) {
-          if (
-            error instanceof Error &&
-            (error.message.includes("cursor") || error.message.includes("Cursor"))
-          )
-            throw new AppError(400, "Invalid feed cursor");
-          throw error;
-        }
-      },
+    .get("/api/feed", zValidator("query", feedRequest), async (c) =>
+      c.json(await feeds.feed(c.req.valid("query"), c.get("userId"), c.req.raw.signal)),
     )
+    .get("/api/accounts/:id", async (c) => {
+      const parsed = accountId.safeParse(c.req.param("id"));
+      if (!parsed.success) throw new AppError(400, "Invalid account identity");
+      return c.json(await feeds.account(parsed.data, c.get("userId"), c.req.raw.signal));
+    })
+    .get("/api/posts/:id", async (c) => {
+      const parsed = postId.safeParse(c.req.param("id"));
+      if (!parsed.success) throw new AppError(400, "Invalid post identity");
+      return c.json(await feeds.post(parsed.data, c.get("userId"), c.req.raw.signal));
+    })
     .get(
-      "/api/title/:id",
-      zValidator(
-        "query",
-        z.object({ warm: z.literal("1").optional(), ready: z.literal("1").optional() }),
-      ),
-      async (c) => {
-        const parsed = sourceId.safeParse(c.req.param("id"));
-        if (!parsed.success) throw new AppError(400, "Invalid canonical title identity");
-        return c.json(
-          await queries.entity(
-            parsed.data,
-            c.get("userId"),
-            c.req.raw.signal,
-            c.req.valid("query").warm === "1",
-            c.req.valid("query").ready === "1",
-          ),
-        );
-      },
-    )
-    .get(
-      "/api/titles",
-      zValidator(
-        "query",
-        z.object({
-          ids: z
-            .string()
-            .max(1200)
-            .transform((v) => v.split(",").filter(Boolean))
-            .pipe(z.array(sourceId).min(1).max(8)),
-        }),
-      ),
+      "/api/search",
+      zValidator("query", z.object({ q: z.string().trim().min(1).max(200) })),
       async (c) =>
-        c.json({
-          results: await queries.titles(c.req.valid("query").ids, c.get("userId")),
-        }),
-    )
-    .get(
-      "/api/social-search",
-      zValidator(
-        "query",
-        z.object({
-          q: z.string().trim().min(1).max(200),
-          cursor: z.coerce.number().int().min(0).max(100000).default(0),
-        }),
-      ),
-      async (c) => {
-        const p = c.req.valid("query");
-        return c.json(await social.search(p.q, p.cursor));
-      },
-    )
-    .get(
-      "/api/lists",
-      zValidator(
-        "query",
-        z.object({
-          cursor: z.uuid().optional(),
-          scope: z.enum(["all", "mine", "saved"]).default("all"),
-        }),
-      ),
-      async (c) =>
-        c.json(
-          await social.lists(
-            c.get("userId"),
-            c.req.valid("query").scope,
-            c.req.valid("query").cursor,
-          ),
-        ),
-    )
-    .get(
-      "/api/lists/:id",
-      zValidator("query", z.object({ cursor: z.string().max(600).optional() })),
-      async (c) =>
-        c.json(await social.list(z.uuid().parse(c.req.param("id")), c.req.valid("query").cursor)),
-    )
-    .get(
-      "/api/profiles/:id",
-      zValidator("query", z.object({ cursor: z.string().max(200).optional() })),
-      async (c) => c.json(await social.profile(c.req.param("id"), c.req.valid("query").cursor)),
+        c.json(await feeds.search(c.req.valid("query").q, c.get("userId"), c.req.raw.signal)),
     )
     .post("/api/command", zValidator("json", commandSchema), async (c) =>
-      c.json(await executeCommand(db, c.get("userId"), c.req.valid("json"))),
+      c.json(await executeCommand(db, signedIn(c), c.req.valid("json"))),
     );
   root.get("/api/events", async (c) => {
     if (metrics.sseConnections >= 500)
@@ -306,7 +239,7 @@ export function createApplication(db: Database, config: Config, upstream?: Tmdb)
         let heartbeat = 0,
           lastAuth = Date.now();
         while (!closed) {
-          if (Date.now() - lastAuth > 30000) {
+          if (userId && Date.now() - lastAuth > 30000) {
             const active = await c.get("auth").api.getSession({ headers: c.req.raw.headers });
             if (!active) break;
             lastAuth = Date.now();

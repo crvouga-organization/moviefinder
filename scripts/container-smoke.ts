@@ -76,11 +76,15 @@ try {
   for (const host of ["moviefinder.container.test", "www.moviefinder.container.test"]) {
     const headers = { Host: host };
     const auth = await fetch(`${origin}/auth`, { headers }),
-      protectedApi = await fetch(`${origin}/api/state`, { headers }),
-      deepLink = await fetch(`${origin}/title/tmdb%3Amovie%3A550`, { headers, redirect: "manual" });
+      protectedApi = await fetch(`${origin}/api/ready`, { headers }),
+      deepLink = await fetch(`${origin}/account/tmdb%3Amovie%3A550`, {
+        headers,
+        redirect: "manual",
+      });
     if (auth.status !== 200 || !(await auth.text()).includes('<div id="root">'))
       throw new Error("Compiled authentication application not served");
-    if (protectedApi.status !== 401 || deepLink.status !== 302)
+    // Reading is public: deep links serve the app; operator APIs still require a session.
+    if (protectedApi.status !== 401 || deepLink.status !== 200)
       throw new Error("Production authentication boundary failed");
   }
   const unknown = await fetch(`${origin}/api/state`, {
@@ -88,7 +92,7 @@ try {
   });
   if (unknown.status !== 403) throw new Error("Unregistered host accepted");
   console.log(
-    `${platform} image smoke passed: /health 200 with PostgreSQL unavailable; /auth 200; protected API 401; protected deep link 302.`,
+    `${platform} image smoke passed: /health 200 with PostgreSQL unavailable; /auth 200; operator API 401; public deep link 200.`,
   );
   const inspect = JSON.parse(await docker(["image", "inspect", image], true));
   console.log(JSON.stringify({ architecture: inspect[0].Architecture, bytes: inspect[0].Size }));

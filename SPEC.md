@@ -2,11 +2,11 @@
 
 ## 0. Mission
 
-Build MovieFinder into a complete, production-ready, mobile-first social platform for discovering, organizing, and discussing movies and television shows.
+Build MovieFinder into a complete, production-ready, mobile-first social media app for movies and television, shaped like Instagram or TikTok: everything is centered on scrolling feeds of heterogeneous posts, and movies, TV shows, people and members each have their own account profile.
 
 This is a **full implementation mandate**, not a prototype, proof of concept, scaffold, or architectural proposal.
 
-Implement every feature described in this specification, including the database, external data integration, authentication, collaborative lists, reactive client state, streaming infrastructure, automated tests, deployment, and operational configuration.
+Implement every feature described in this specification, including the database, external data integration, authentication, social interactions, reactive client state, streaming infrastructure, automated tests, deployment, and operational configuration.
 
 Work autonomously. Do not stop to ask architectural or implementation questions. Make reasonable decisions consistent with this specification and document them. Continue until the application passes its checks and all acceptance criteria are satisfied.
 
@@ -201,9 +201,9 @@ The following are non-negotiable.
 2. **No loading spinners:** Never display spinning indicators.
 3. **Immediate interactions:** User actions update optimistically.
 4. **Progressive data delivery:** Show cached data immediately and enrich it as data arrives.
-5. **Authenticated application:** Require login for every application feature.
-6. **Public social content:** No private lists, secret profiles, or privacy-toggle systems.
-7. **Collaborative by design:** Lists support multiple simultaneous editors.
+5. **Open reading:** Every feed, profile, post and search is available to logged-out visitors. Signing in only unlocks interactions (like, follow, comment, post, profile editing).
+6. **Public social content:** No private posts, secret profiles, or privacy-toggle systems.
+7. **Feed-first:** Every screen leads into scrolling content; accounts are discovered through their posts.
 8. **Movies and TV equally supported:** Television is not a secondary feature.
 9. **Normalized client state:** All server-derived entities share canonical client collections.
 10. **Server-owned external catalog:** TMDB is accessed only through the server.
@@ -240,22 +240,19 @@ Google is the sole authentication method, through the shared Google-to-OIDC rela
 
 Do not invent or hardcode provider credentials.
 
-All application pages require authentication except the authentication flow and operational health endpoints.
+Every application page and read API is public. Logged-out visitors can scroll every feed, open every account profile, read posts and comments and search.
 
-Unauthenticated users navigating to deep links must be redirected to login and then returned to their intended destination.
+An interaction by a logged-out visitor opens a sign-in prompt and returns them to the same page afterwards.
 
-Every authenticated user can discover other users and view public social content.
+Operator endpoints (`/api/ready`, `/api/metrics`) and all commands require a session.
 
-No anonymous browsing mode is required.
-
-No private-account or private-list functionality is required.
+No private-account or private-post functionality is required.
 
 Authentication and authorization remain separate:
 
-- Reading public application content requires authentication.
-- Editing personal state requires ownership.
-- Editing collaborative lists requires membership and the correct role.
-- Managing list collaborators requires appropriate list permissions.
+- Reading public content requires nothing.
+- Liking, following, commenting and posting require a session.
+- Editing a profile, deleting a post or deleting a comment requires ownership (a post's author may also remove comments on it).
 
 Enforce authorization on the backend, never only through hidden UI controls.
 
@@ -275,11 +272,11 @@ Create typed collections for:
 - Credits.
 - Genres.
 - Users.
-- User-title status.
-- Lists.
-- List items.
-- List collaborators.
-- Social activity.
+- Posts.
+- Comments.
+- Post engagement counters.
+- Account audience counters.
+- The viewer's likes and follows.
 
 Each entity must have a canonical identity.
 
@@ -315,225 +312,72 @@ Preserve correctness across reconnects and duplicate event delivery.
 
 ---
 
-# 7. Movie and TV discovery feed
+# 7. Feeds of heterogeneous posts
 
-The primary experience is a vertically swipable, TikTok-inspired discovery feed.
+The primary experience is a full-height, vertically swipable TikTok-style feed built with Swiper.js.
 
-Use Swiper.js.
+A post is the unit of content. Posts are heterogeneous:
 
-Each slide displays a movie or television poster as its primary visual element.
+- Image posts (posters, backdrops, profile photos, season art).
+- Galleries (stills, alternative posters, cast photos linking to each person, "known for" posters linking to each title), swiped horizontally inside the vertical feed.
+- Videos (trailers, teasers and clips), shown as artwork with tap-to-play; never autoplay.
+- Text posts and member posts with attached artwork.
 
-The feed should include:
+Catalog accounts publish posts derived deterministically from their cached TMDB source record, so a post keeps its identity, likes and comments across refreshes. Provider summaries yield artwork posts; hydrated details add trailers, galleries, cast and seasons. Members publish stored posts that may tag one movie, show or person and attach that account's artwork.
 
-- Large poster artwork.
-- Title.
-- Release year.
-- Movie or TV indicator.
-- Genres.
-- Rating or popularity information where appropriate.
-- Immediate opinion/tagging controls.
-- Add-to-list action.
-- Access to title details.
-- Relevant social context when available.
+Feeds:
 
-Swiping vertically advances to the next title.
+- **For You:** provider trending (or topic-filtered popular) pages expanded into each account's featured posts, with recent member posts woven in. Topic chips select All, Movies, TV or a genre.
+- **Following:** posts from followed movies, shows, people and members, plus member posts tagging followed accounts. Signed-out visitors see a sign-in invitation.
+- **Explore:** a three-column grid of popular posts by topic plus account search. A grid tile opens the same posts as a vertical feed starting at that post.
 
-Interactions must feel instantaneous.
+Each feed slide shows the media, the author's avatar, like/comment/share actions with counts, and the caption with tagged accounts.
 
 Implement:
 
-- Preloading adjacent slides.
-- Poster prefetching.
-- Stable slide dimensions.
-- Correct gesture handling.
-- Touch-friendly controls.
-- Preservation of position after navigation.
-- Smooth transitions.
-- Memory-efficient handling of long feeds.
-- Cursor-based pagination.
-- Continuous loading before the feed is exhausted.
-- Intelligent deduplication of already presented titles.
+- Virtualized slides (never thousands of DOM nodes).
+- Stable slide dimensions and reserved media frames.
+- Cursor pagination that loads before the feed is exhausted.
+- Append-only ordering: posts already presented never move when later pages or late provider results arrive.
+- Preservation of position after navigating to a profile or post and back.
+- Deduplication of posts within a feed session.
 
-Do not mount thousands of slide DOM nodes indefinitely.
+# 8. Accounts and profiles
 
-The application must work equally well with movies and TV shows.
+Movies, TV shows, people and members are all accounts with Instagram/TikTok-style profiles:
 
-Avoid autoplay video or unnecessarily expensive effects that interfere with smooth swiping.
+- Avatar, cover artwork, name, handle or kind/year.
+- Post, follower and (for members) following counts.
+- Follow button (or Edit profile and Sign out on one's own profile).
+- Overview/biography and facts (year, runtime, seasons, rating, genres, birthplace).
+- Tabs: Posts, Videos, Community (member posts tagging the account), Cast and Related for titles, Credits for people, Likes for members.
+- Grid tiles open the tab as a vertical feed starting at the tapped post.
 
----
+Every relationship is navigable: cast to person accounts, credits and related titles to title accounts, gallery items to the linked account.
 
-# 8. Highly customizable feeds
+# 9. Interactions
 
-The feed must support a rich, composable system of filter and sorting chips.
+Signed-in members can:
 
-### Content filtering
+- Like and unlike any post.
+- Follow and unfollow any account.
+- Comment on any post and delete their own comments (post authors may remove comments on their posts).
+- Create posts with a caption, an optional tagged movie/show/person and up to ten of its images; delete their own posts.
+- Edit their public profile.
 
-Support:
+Interactions update optimistically and reconcile with the server. Likes and follows toggle: an undo is a newer inactive version, never a removal that a late event could resurrect. Counters are maintained transactionally with the change and can never go negative. Duplicate operation IDs replay the original result; reusing an ID for a different command is rejected.
 
-- Movies.
-- TV shows.
-- Both.
-- One or multiple genres.
-- Excluded genres.
-- Release year and date ranges.
-- Runtime or episode-length ranges.
-- Original language.
-- Origin country.
-- Minimum and maximum ratings.
-- Minimum vote counts.
-- Popularity ranges.
-- Cast members.
-- Directors and crew.
-- Keywords and themes.
-- Streaming availability when reliable source data is available.
-- Seen / unseen.
-- Liked / disliked / meh / unrated.
-- In-list / not-in-list.
-- Exclude already seen.
-- Exclude already shown in the current feed session.
+# 10. Real-time behavior
 
-### Sorting
+Committed changes stream through SSE to every visitor. Counters, posts and comments are public events; a member's own likes and follows are delivered only to that member.
 
-Support:
+Support reconnection, duplicate delivery and replay from a cursor; if the cursor is too old, send a consistent snapshot and resume.
 
-- Popularity.
-- Highest rated.
-- Lowest rated.
-- Newest.
-- Oldest.
-- Trending, where supported by source data.
-- Random discovery.
-- Personalized relevance where meaningful signals exist.
+Persist each mutation and its ordered events in the same transaction.
 
-Allow multiple filters to compose predictably.
+# 11. Comprehensive account details
 
-Use strongly typed query parameters validated with Zod.
-
-Support reusable filter configurations and saved feeds.
-
-Reflect useful feed state in the URL for navigation and sharing.
-
-Make the chip UI easy to use one-handed on mobile.
-
-Changes should not create jarring page resets or spinners.
-
-Keep existing results on screen while the next query resolves.
-
-Distinguish filters that can be satisfied from current local data from filters that require additional TMDB discovery queries.
-
-Provide clear feedback when a filter cannot be supported by available metadata.
-
----
-
-# 9. Movie and TV tagging
-
-Each user can independently record:
-
-### Viewing status
-
-- Seen.
-- Not seen.
-
-### Sentiment
-
-- Liked.
-- Meh.
-- Disliked.
-- Unrated.
-
-These dimensions are independent.
-
-A user may mark a film as seen and liked, or unseen and liked.
-
-Support removing or changing a tag.
-
-Changes must appear immediately across:
-
-- Discover feeds.
-- Detail pages.
-- Personal profiles.
-- Lists.
-- Related-content views.
-- Feed filters.
-
-Use efficient optimistic mutations and normalized entity updates.
-
-Enforce uniqueness of one user's canonical status per title.
-
-Do not create multiple conflicting records for the same user-title pair.
-
-Use database constraints and idempotent mutation handling.
-
----
-
-# 10. Collaborative social lists
-
-Implement a complete social list-making system.
-
-Users can:
-
-- Create lists.
-- Rename lists.
-- Edit descriptions.
-- Add and remove movies or TV shows.
-- Reorder entries using drag-and-drop.
-- Invite other registered users.
-- Accept and manage collaboration invitations.
-- Browse other users' lists.
-- Follow or save lists.
-- Search within lists.
-- Copy another public list.
-- Navigate directly to every listed title.
-- See collaborators and recent edits.
-
-All lists are visible to authenticated users.
-
-Support explicit list roles:
-
-- Owner.
-- Editor.
-
-Owners manage collaborators and list-level settings.
-
-Editors modify list contents and ordering.
-
-List viewers can read public lists but cannot edit them without authorization.
-
-### Real-time behavior
-
-Multiple users must be able to edit the same list simultaneously.
-
-Updates must propagate through SSE without refreshing the page.
-
-Support:
-
-- Concurrent additions.
-- Concurrent removals.
-- Simultaneous reordering.
-- Metadata edits.
-- Membership changes.
-- Reconnection after temporary network loss.
-- Duplicate delivery.
-- Out-of-order delivery.
-- Idempotent operations.
-
-Define deterministic conflict-resolution semantics.
-
-Prefer stable item identifiers, versioned mutations, and a robust ordering-key strategy.
-
-Do not use a naive full-array replacement that causes concurrent reorders to overwrite unrelated edits.
-
-Persist the authoritative mutation and an ordered event record in the same database transaction.
-
-A reconnecting client must be able to recover events it missed.
-
-If its replay cursor is too old, provide a consistent snapshot and resume streaming.
-
-An append-only list event log is appropriate.
-
----
-
-# 11. Comprehensive title details
+Title and person details remain comprehensive; they now appear as profile facts, tabs and posts rather than a separate details page.
 
 Implement polished, information-rich detail screens for both movies and television.
 
@@ -561,8 +405,7 @@ Include, where available:
 - Collection/franchise relationships.
 - External identifiers and supported links.
 - Trailers and videos.
-- User's tags.
-- Add-to-list controls.
+- Follow and community posts.
 
 ### TV details
 
@@ -859,7 +702,7 @@ Use Server-Sent Events for server-to-client synchronization.
 SSE must support both:
 
 - Entity/query updates.
-- Collaborative list events.
+- Social interaction events (posts, comments, counters, the viewer's likes and follows).
 
 Define an explicit versioned event protocol.
 
@@ -920,27 +763,17 @@ Better Auth user, session, account, and verification tables.
 - Synchronization checkpoints.
 - Indexable catalog projections where justified.
 
-### User data
-
-- Public user profiles.
-- User title statuses.
-- Saved feed configurations.
-- Relevant user preferences.
-
-### Collaboration
-
-- Lists.
-- List items.
-- Collaborators.
-- Invitations.
-- List events.
-- Mutation idempotency records.
-
 ### Social
 
-- User connections/follows where required.
-- Saved/followed lists.
-- Social activity.
+- Public user profiles.
+- Member posts.
+- Post likes.
+- Comments.
+- Follows of any account kind.
+- Post engagement and account audience counters.
+- Ordered events and mutation idempotency records.
+
+Legacy tag, list, collaboration and activity tables from the previous product remain in place (no destructive migration) and are unused.
 
 Design proper primary keys, foreign keys, uniqueness constraints, and transaction boundaries.
 
@@ -985,13 +818,15 @@ Specialized movie-discovery interactions may use custom components where necessa
 
 Implement a bottom navigation system suitable for mobile.
 
-Suggested sections:
+Sections:
 
-- Discover.
-- Search.
-- Lists.
-- Activity.
+- For You.
+- Following.
+- Explore.
+- Post (create).
 - Profile.
+
+Desktop uses a left sidebar with the same destinations and centers the feed column.
 
 Use TanStack Router.
 
@@ -1062,8 +897,7 @@ Support searching:
 - Movies.
 - TV series.
 - People.
-- Users.
-- Public lists.
+- Members.
 
 Use debounced input and immediate presentation of available cached matches.
 
@@ -1242,7 +1076,7 @@ Verify Hono RPC typing, validation, authentication, and authorization.
 
 Use Playwright with realistic mobile viewports.
 
-Verify feed swipes, filtering, tags, lists, invitations, collaboration, detail navigation, authentication, and reconnect behavior.
+Verify feed swipes, topics, profiles, likes, follows, comments, posts, signed-out reading, sign-in prompts, authentication, and reconnect behavior.
 
 **Visual tests**
 
@@ -1270,37 +1104,28 @@ Consider the application complete only when these scenarios pass.
 
 - Registration and login work.
 - Sessions survive reloads.
-- Protected routes reject unauthenticated access.
-- Returning from login restores the intended destination.
+- Logged-out visitors can read every feed, profile, post and search.
+- Interactions by visitors prompt sign-in and return to the same page.
+- Commands and operator endpoints reject requests without a session.
 - Better Auth persists all required records through PostgreSQL.
 
-### Discovery
+### Feeds
 
-- A user can continuously swipe through movie posters.
-- A user can switch seamlessly between movie, TV, and combined feeds.
-- Filtering and sorting work correctly in combination.
-- Feed state survives detail-page navigation.
-- Duplicate content is avoided within a feed session.
-- Pagination handles partially cached results correctly.
-- Posters preload without exhausting browser memory.
+- A visitor can continuously swipe through heterogeneous posts (images, galleries, videos, member posts).
+- Topic chips switch between all, movies, TV and genres.
+- Feed position survives profile and post navigation.
+- Posts already shown never reorder or duplicate as pages and provider results arrive.
+- Pagination handles partially cached provider results correctly.
+- Media preloads without exhausting browser memory.
 
-### Tagging
+### Accounts and interactions
 
-- A user can mark any title seen or unseen.
-- A user can assign liked, meh, disliked, or unrated sentiment.
-- Tags update optimistically.
-- Tag state is consistent across all views.
-- Concurrent mutations resolve deterministically.
-
-### Lists
-
-- A user can create and edit a list.
-- A user can invite collaborators.
-- Membership permissions are enforced.
-- Multiple users can add and reorder titles simultaneously.
-- No edits are lost during concurrent modifications.
-- Reconnecting clients recover missed events.
-- Duplicate events do not create duplicate list items.
+- Movies, shows, people and members have profiles with posts, counts, follow and tabs.
+- Likes, follows, comments and posts update optimistically and are consistent across views.
+- Counters stay exact under concurrent interactions.
+- Followed accounts' posts appear in Following.
+- Ownership rules for deleting posts and comments are enforced on the backend.
+- Reconnecting clients recover missed events; duplicate events are harmless.
 
 ### Catalog
 
@@ -1365,15 +1190,15 @@ Implement TanStack DB collections, Hono RPC integration, SSE delivery, optimisti
 
 **Phase 4 — Discovery**
 
-Implement Swiper.js feed, filters, sorting, pagination, title tagging, and search.
+Implement the Swiper.js post feeds, topics, pagination, Explore grid, and search.
 
 **Phase 5 — Catalog navigation**
 
-Implement movie, TV, season, episode, and person detail screens.
+Implement movie, TV, person and member account profiles.
 
-**Phase 6 — Social lists**
+**Phase 6 — Social interactions**
 
-Implement list management, invitations, collaborator permissions, ordering, realtime editing, and event recovery.
+Implement likes, follows, comments, member posts, counters, realtime delivery, and event recovery.
 
 **Phase 7 — Product polish**
 
@@ -1396,7 +1221,7 @@ Create and maintain:
 - `docs/architecture.md` — system boundaries and data flows.
 - `docs/entity-store.md` — data model, replication, cache coverage, and refresh semantics.
 - `docs/query-system.md` — `defineQuery`, normalization, pagination, and SSE behavior.
-- `docs/realtime.md` — event protocol, list concurrency, and reconnect behavior.
+- `docs/realtime.md` — event protocol, interaction concurrency, and reconnect behavior.
 - `docs/infrastructure.md` — authoritative integration and deployment procedures.
 - `docs/testing.md` — test strategy and required commands.
 

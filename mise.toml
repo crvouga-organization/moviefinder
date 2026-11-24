@@ -1,0 +1,6 @@
+# Application toolchain, matching package.json packageManager and CI (.github/actions/setup).
+# Bun manages JavaScript dependencies; mise only supplies the runtimes and CLIs.
+[tools]
+bun = "1.4.2"
+node = "22.22.3"
+atlas = "1.3.0"

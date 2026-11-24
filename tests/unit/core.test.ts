@@ -1,12 +1,9 @@
 import { describe, it, expect, vi } from "vite-plus/test";
 import fc from "fast-check";
-import { generateKeyBetween } from "fractional-indexing";
 import {
   canonicalId,
   feedParams,
   stableSerialize,
-  canEdit,
-  canManage,
   safeReturnTo,
   mergeEvent,
   type Entity,
@@ -65,10 +62,9 @@ describe("query contracts", () => {
       }),
     ));
   it("validates compound filters and reversed ranges", () => {
-    expect(feedParams.parse({ genres: "18,35", ratingMin: "7", seen: "unseen" })).toMatchObject({
+    expect(feedParams.parse({ genres: "18,35", ratingMin: "7" })).toMatchObject({
       genres: [18, 35],
       ratingMin: 7,
-      seen: "unseen",
     });
     expect(feedParams.safeParse({ yearMin: 2025, yearMax: 1990 }).success).toBe(false);
     expect(feedParams.safeParse({ genres: "abc" }).success).toBe(false);
@@ -102,56 +98,27 @@ describe("query contracts", () => {
       page: "2",
     });
   });
-  it("keeps viewing and sentiment independent", () => {
+  it("matches locally cached titles against composed filters", () => {
     const e = normalize("tmdb:movie:550", movieDetail).find((e) => e.id === "tmdb:movie:550")!;
-    expect(
-      localMatch(e, feedParams.parse({ seen: "unseen", sentiment: "liked" }), {
-        seen: false,
-        sentiment: "liked",
-      } as never),
-    ).toBe(true);
-    expect(
-      localMatch(e, feedParams.parse({ seen: "seen" }), {
-        seen: false,
-        sentiment: "liked",
-      } as never),
-    ).toBe(false);
+    expect(localMatch(e, feedParams.parse({ genres: [18] }))).toBe(true);
+    expect(localMatch(e, feedParams.parse({ excludeGenres: [18] }))).toBe(false);
+    expect(localMatch(e, feedParams.parse({ type: "tv" }))).toBe(false);
   });
 });
 describe("permissions, ordering, and replay", () => {
-  it("separates content editing from collaborator management", () => {
-    expect(canEdit("editor")).toBe(true);
-    expect(canManage("editor")).toBe(false);
-    expect(canEdit(undefined)).toBe(false);
-    expect(canManage("owner")).toBe(true);
-  });
   it("rejects open redirect targets", () => {
     for (const v of ["https://evil.test", "//evil.test", "/\\evil.test", "/auth", "/\n//evil.test"])
       expect(safeReturnTo(v)).toBe("/");
-    expect(safeReturnTo("/title/tmdb%3Amovie%3A1?x=2")).toContain("/title/");
+    expect(safeReturnTo("/account/tmdb%3Amovie%3A1?x=2")).toContain("/account/");
   });
-  it("generates dense sortable keys without rewriting existing entries", () =>
-    fc.assert(
-      fc.property(fc.array(fc.nat(), { maxLength: 200 }), (positions) => {
-        const keys: string[] = [];
-        for (const position of positions) {
-          const i = position % (keys.length + 1),
-            key = generateKeyBetween(keys[i - 1] ?? null, keys[i] ?? null);
-          keys.splice(i, 0, key);
-          expect([...keys].sort()).toEqual(keys);
-          expect(new Set(keys).size).toBe(keys.length);
-        }
-      }),
-      { numRuns: 50 },
-    ));
   it("rejects duplicate and out-of-order entity revisions", () => {
     const versions = new Map<string, number>(),
-      e: Entity = { id: "a", kind: "list", version: 2, title: "New", data: {} },
+      e: Entity = { id: "post:a", kind: "post", version: 2, title: "New", data: {} },
       event: EventEnvelope = {
         protocol: 1,
         id: "1",
         type: "upsert",
-        subscription: "list:a",
+        subscription: "posts",
         entities: [e],
         removed: [],
         timestamp: "",
@@ -221,10 +188,10 @@ it("retains only validated per-user command intents for reload recovery", async 
       },
     }),
     command = {
-      type: "status",
+      type: "like",
       operationId: crypto.randomUUID(),
-      titleId: "tmdb:movie:550",
-      seen: true,
+      postId: "tmdb:movie:550~poster",
+      like: true,
     } as const;
   outbox.put("a", command);
   outbox.put("a", command);
@@ -246,15 +213,32 @@ it("does not invent rating or popularity for missing source metadata", () => {
   expect(value.popularity).toBeUndefined();
 });
 
-it("restricts title-tag and list commands to movies and series", async () => {
+it("validates post, account and media identities in commands", async () => {
   const { commandSchema } = await import("../../src/shared/contracts");
+  const operationId = crypto.randomUUID();
+  const parse = (value: object) => commandSchema.safeParse({ operationId, ...value }).success;
+  expect(parse({ type: "like", postId: "tmdb:movie:550~video:SUXWAEX2jlg", like: true })).toBe(
+    true,
+  );
+  expect(parse({ type: "like", postId: `post:${operationId}`, like: true })).toBe(true);
+  expect(parse({ type: "like", postId: "tmdb:movie:550", like: true })).toBe(false);
+  expect(parse({ type: "follow", accountId: "tmdb:person:819", follow: true })).toBe(true);
+  expect(parse({ type: "follow", accountId: "user:abc_123", follow: true })).toBe(true);
+  expect(parse({ type: "follow", accountId: "tmdb:movie:550:season:1", follow: true })).toBe(false);
   expect(
-    commandSchema.safeParse({
-      type: "status",
-      operationId: crypto.randomUUID(),
-      titleId: "tmdb:person:819",
-      seen: true,
-    }).success,
+    parse({
+      type: "post.create",
+      body: "",
+      subjectId: "tmdb:movie:550",
+      media: [{ type: "image", role: "poster", path: "/a.jpg", aspect: 0.67 }],
+    }),
+  ).toBe(true);
+  expect(
+    parse({
+      type: "post.create",
+      body: "",
+      media: [{ type: "image", role: "poster", path: "https://evil.test/a.jpg", aspect: 1 }],
+    }),
   ).toBe(false);
 });
 
