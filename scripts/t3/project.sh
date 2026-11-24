@@ -27,8 +27,50 @@ setup() {
   if [[ ! -f .local/dev.pid ]]; then mise exec -- bun run db:migrate; fi
 }
 
+# T3's Preview URL for Run app points at this port. A second checkout running at the
+# same time falls back to a free port (printed at startup).
+preview_port=5317
+# Loopback only: the tailnet proxy for this port listens on the tailnet address.
+port_free() {
+  local host
+  for host in 127.0.0.1 ::1; do
+    if (exec 3<>"/dev/tcp/$host/$1") 2>/dev/null; then return 1; fi
+  done
+}
+
+# Publish the dev server to this machine's tailnet only (never the LAN or internet), so a
+# phone on the tailnet opens it directly at https://<machine>.<tailnet>.ts.net:<port>.
+share_on_tailnet() {
+  [[ ${MOVIEFINDER_TAILNET:-1} == 1 && -n ${MOVIEFINDER_WEB_PORT:-} ]] || return 0
+  command -v tailscale >/dev/null || return 0
+  local name
+  name=$(tailscale status --json 2>/dev/null | mise exec -- bun -e 'const s=JSON.parse(await Bun.stdin.text());console.log(s.BackendState==="Running"?(s.Self?.DNSName??"").replace(/\.$/,""):"")') || return 0
+  [[ -n $name ]] || return 0
+  if tailscale serve --bg --https="$MOVIEFINDER_WEB_PORT" "http://127.0.0.1:$MOVIEFINDER_WEB_PORT" >/dev/null 2>&1; then
+    export MOVIEFINDER_DEV_HOST=127.0.0.1
+    export MOVIEFINDER_ADDITIONAL_ORIGINS="https://$name:$MOVIEFINDER_WEB_PORT"
+    # Repeat the phone URL once the server answers, so it is the last line after Vite's
+    # banner (whose loopback address only works on this machine).
+    local url="https://$name:$MOVIEFINDER_WEB_PORT" port=$MOVIEFINDER_WEB_PORT
+    (for _ in $(seq 1 120); do
+      if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+        sleep 1
+        printf '\n  Open on your phone (Tailscale on): %s\n\n' "$url"
+        exit 0
+      fi
+      sleep 1
+    done) &
+  else
+    echo "Tailscale serve is unavailable; the app is reachable on this machine only." >&2
+  fi
+}
+
 run() {
   setup
+  if [[ -z ${MOVIEFINDER_WEB_PORT:-} && ! -f .local/auth-relay.json ]] && port_free "$preview_port"; then
+    export MOVIEFINDER_WEB_PORT=$preview_port
+  fi
+  share_on_tailnet
   if mise exec -- vault run -- true >/dev/null 2>&1; then
     exec mise exec -- bun run dev
   fi

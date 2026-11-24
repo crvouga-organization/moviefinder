@@ -29,6 +29,7 @@ When registration settings are saved in ignored `.local/auth-relay.json`, ordina
 
 - **Setup** runs when T3 creates a worktree: installs the pinned tools with mise, runs `bun install --frozen-lockfile` only when `package.json`/`bun.lock` changed, and initializes and migrates this checkout's embedded PostgreSQL so the first run starts warm.
 - **Run app** repeats the (no-op when warm) setup and starts `scripts/dev.ts`. Each checkout uses its own `.local/` database and free ports, so worktrees run side by side. Secrets come from `vault run` when the platform wrapper is installed, otherwise from the same `personal/dev` Vault config through `~/personal`'s `infra-vault run` (override with `PERSONAL_WORKSPACE`). Without either, it starts with a private per-checkout auth secret and no TMDB refresh.
+- **Phone access:** Run app prefers web port 5317 and, when Tailscale is running, publishes it to the tailnet only with `tailscale serve --https=5317` (never the LAN or internet). Any device on the tailnet then opens `https://<machine>.<tailnet>.ts.net:5317`; the URL is printed at startup and registered as an additional exact origin. Google sign-in stays on `localhost`, the only registered callback, so browse on the phone signed out. Set `MOVIEFINDER_TAILNET=0` to keep the app local, and run `tailscale serve --https=5317 off` to remove the proxy.
 
 ## super.engineering hooks
 
