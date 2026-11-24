@@ -5,7 +5,9 @@
     {
       "name": "Run app",
       "command": "exec bash scripts/t3/project.sh run",
-      "icon": "play"
+      "icon": "play",
+      "previewUrl": "http://localhost:5317",
+      "autoOpenPreview": true
     },
     {
       "name": "Setup",
